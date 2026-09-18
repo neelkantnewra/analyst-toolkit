@@ -1,0 +1,488 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Snowflake Code Anonymizer</title>
+<style>
+  :root {
+    --bg: #f7f8fa;
+    --panel: #ffffff;
+    --border: #d9dee3;
+    --text: #1b1f23;
+    --text-dim: #5b6570;
+    --accent: #1f6feb;
+    --accent-text: #ffffff;
+    --danger: #c0392b;
+    --success: #1e7e34;
+    --mono-bg: #0f1117;
+    --mono-text: #d7dde3;
+    --row-alt: #f0f2f5;
+    --input-bg: #ffffff;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #14161a;
+      --panel: #1c1f24;
+      --border: #33383f;
+      --text: #e7eaee;
+      --text-dim: #97a1ab;
+      --accent: #4f8ef7;
+      --accent-text: #0b0d10;
+      --danger: #ff6b5e;
+      --success: #4fd97a;
+      --mono-bg: #0a0b0d;
+      --mono-text: #d7dde3;
+      --row-alt: #23262c;
+      --input-bg: #14161a;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #14161a;
+    --panel: #1c1f24;
+    --border: #33383f;
+    --text: #e7eaee;
+    --text-dim: #97a1ab;
+    --accent: #4f8ef7;
+    --accent-text: #0b0d10;
+    --danger: #ff6b5e;
+    --success: #4fd97a;
+    --mono-bg: #0a0b0d;
+    --mono-text: #d7dde3;
+    --row-alt: #23262c;
+    --input-bg: #14161a;
+  }
+  * { box-sizing: border-box; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
+    margin: 0;
+    padding: 20px;
+  }
+  .wrap { max-width: 1100px; margin: 0 auto; }
+  h1 { font-size: 20px; margin: 0 0 4px 0; }
+  .sub { color: var(--text-dim); font-size: 13px; margin-bottom: 18px; }
+  .tabs { display: flex; gap: 4px; margin-bottom: 14px; border-bottom: 1px solid var(--border); }
+  .tab-btn {
+    background: none; border: none; padding: 10px 16px; cursor: pointer;
+    color: var(--text-dim); font-size: 14px; font-weight: 600;
+    border-bottom: 2px solid transparent; margin-bottom: -1px;
+  }
+  .tab-btn.active { color: var(--accent); border-bottom-color: var(--accent); }
+  .panel { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 16px; margin-bottom: 16px; }
+  .panel h2 { font-size: 14px; margin: 0 0 10px 0; }
+  label { font-size: 12px; color: var(--text-dim); display: block; margin-bottom: 4px; }
+  textarea {
+    width: 100%; min-height: 200px; background: var(--mono-bg); color: var(--mono-text);
+    border: 1px solid var(--border); border-radius: 8px; padding: 10px;
+    font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+    font-size: 12.5px; resize: vertical; line-height: 1.5;
+  }
+  input[type=text], select {
+    background: var(--input-bg); color: var(--text); border: 1px solid var(--border);
+    border-radius: 6px; padding: 6px 8px; font-size: 13px;
+  }
+  button {
+    background: var(--accent); color: var(--accent-text); border: none; border-radius: 7px;
+    padding: 9px 14px; font-size: 13px; font-weight: 600; cursor: pointer;
+  }
+  button.secondary { background: transparent; color: var(--text); border: 1px solid var(--border); }
+  button.small { padding: 5px 9px; font-size: 12px; }
+  button:disabled { opacity: 0.5; cursor: default; }
+  .row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin: 10px 0; }
+  .tablewrap { max-height: 380px; overflow: auto; border: 1px solid var(--border); border-radius: 8px; }
+  table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+  th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--border); white-space: nowrap; }
+  tr:nth-child(even) { background: var(--row-alt); }
+  th { position: sticky; top: 0; background: var(--panel); }
+  td input[type=text] { width: 100%; min-width: 110px; }
+  .count-badge { color: var(--text-dim); font-size: 12px; }
+  .note { font-size: 12px; color: var(--text-dim); margin-top: 6px; }
+  .flexcols { display: flex; gap: 16px; flex-wrap: wrap; }
+  .flexcols > div { flex: 1 1 320px; }
+  .danger-text { color: var(--danger); }
+  .success-text { color: var(--success); }
+  .hidden { display: none; }
+  .footerbar { display: flex; justify-content: space-between; align-items: center; margin-top: 4px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Snowflake Code Anonymizer</h1>
+  <div class="sub">Strip company-specific table/column/variable names before pasting SQL into an AI tool, then restore them afterward. Everything runs in your browser — nothing is sent anywhere.</div>
+
+  <div class="tabs">
+    <button class="tab-btn active" id="tabBtn1" onclick="showTab(1)">1. Anonymize code</button>
+    <button class="tab-btn" id="tabBtn2" onclick="showTab(2)">2. Restore original names</button>
+  </div>
+
+  <!-- TAB 1 -->
+  <div id="tab1">
+    <div class="panel">
+      <h2>Paste your Snowflake SQL</h2>
+      <textarea id="inputCode" placeholder="Paste your Snowflake SQL here..."></textarea>
+      <div class="row">
+        <button onclick="scanCode()">Scan for identifiers</button>
+        <span class="note" id="scanNote"></span>
+      </div>
+    </div>
+
+    <div class="panel" id="candidatesPanel" style="display:none;">
+      <h2>Review detected identifiers <span class="count-badge" id="candCount"></span></h2>
+      <div class="note">Uncheck anything you don't want touched (e.g. a genuinely generic column name like <code>id</code>). Adjust category / generic name as needed. Everything here uses exact whole-word matching.</div>
+      <div class="row">
+        <button class="secondary small" onclick="toggleAll(true)">Select all</button>
+        <button class="secondary small" onclick="toggleAll(false)">Deselect all</button>
+        <button class="secondary small" onclick="renumber()">Renumber by category</button>
+      </div>
+      <div class="tablewrap">
+        <table>
+          <thead><tr><th></th><th>Original</th><th>Occurrences</th><th>Category</th><th>Generic name</th></tr></thead>
+          <tbody id="candBody"></tbody>
+        </table>
+      </div>
+
+      <h2 style="margin-top:16px;">Add a custom find &amp; replace (for values in strings/comments)</h2>
+      <div class="row">
+        <input type="text" id="customOriginal" placeholder="exact text, e.g. Acme Corp">
+        <input type="text" id="customGeneric" placeholder="replacement, e.g. Company_1">
+        <button class="secondary small" onclick="addCustom()">Add</button>
+      </div>
+
+      <div class="row" style="margin-top:14px;">
+        <button onclick="generateAnonymized()">Generate anonymized code</button>
+      </div>
+    </div>
+
+    <div class="panel" id="outputPanel" style="display:none;">
+      <div class="flexcols">
+        <div>
+          <div class="footerbar"><h2>Anonymized code</h2>
+            <div>
+              <button class="secondary small" onclick="copyText('outputCode')">Copy</button>
+              <button class="secondary small" onclick="downloadText(document.getElementById('outputCode').value,'anonymized_snowflake.sql')">Download .sql</button>
+            </div>
+          </div>
+          <textarea id="outputCode" readonly></textarea>
+        </div>
+        <div>
+          <div class="footerbar"><h2>Dictionary (keep this safe)</h2>
+            <div>
+              <button class="secondary small" onclick="copyText('outputDict')">Copy</button>
+              <button class="secondary small" onclick="downloadDictCSV()">Download .csv</button>
+            </div>
+          </div>
+          <textarea id="outputDict" readonly></textarea>
+        </div>
+      </div>
+      <div class="note">The dictionary contains your real company-specific names — don't paste it into the AI tool. Keep it to translate the AI's output back in tab 2.</div>
+    </div>
+  </div>
+
+  <!-- TAB 2 -->
+  <div id="tab2" class="hidden">
+    <div class="panel">
+      <h2>Restore original names</h2>
+      <div class="note">Paste the AI-generated documentation (which contains the generic names) below. It will use the dictionary built in tab 1 to swap generic names back to your real ones.</div>
+      <label style="margin-top:10px;">Text to restore</label>
+      <textarea id="restoreInput" placeholder="Paste the AI's output here..."></textarea>
+      <div class="row">
+        <button onclick="restoreText()">Restore original names</button>
+        <span class="note" id="restoreNote"></span>
+      </div>
+      <label style="margin-top:10px;">Restored output</label>
+      <textarea id="restoreOutput" readonly></textarea>
+      <div class="row">
+        <button class="secondary small" onclick="copyText('restoreOutput')">Copy</button>
+      </div>
+    </div>
+    <div class="panel">
+      <h2>Current dictionary</h2>
+      <div class="tablewrap">
+        <table>
+          <thead><tr><th>Generic</th><th>Original</th><th>Category</th></tr></thead>
+          <tbody id="dictViewBody"></tbody>
+        </table>
+      </div>
+      <div class="row">
+        <button class="secondary small danger-text" onclick="clearSaved()">Clear saved dictionary from this browser</button>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+let candidates = []; // {id, original, occurrences, category, generic, selected, mode}
+
+const KEYWORDS = new Set([
+"SELECT","FROM","WHERE","GROUP","BY","ORDER","HAVING","JOIN","INNER","LEFT","RIGHT","FULL","OUTER","CROSS",
+"ON","AS","AND","OR","NOT","IN","EXISTS","BETWEEN","LIKE","ILIKE","IS","NULL","DISTINCT","UNION","ALL",
+"MINUS","INTERSECT","LIMIT","OFFSET","WITH","RECURSIVE","OVER","PARTITION","ROWS","RANGE","UNBOUNDED",
+"PRECEDING","FOLLOWING","CURRENT","ROW","CASE","WHEN","THEN","ELSE","END","INSERT","INTO","VALUES","UPDATE",
+"SET","DELETE","MERGE","MATCHED","USING","CREATE","REPLACE","OR","TEMPORARY","TEMP","TRANSIENT","TABLE",
+"VIEW","MATERIALIZED","STAGE","FILE","FORMAT","COPY","PUT","GET","GRANT","REVOKE","WAREHOUSE","DATABASE",
+"SCHEMA","ROLE","USE","CALL","PROCEDURE","FUNCTION","RETURNS","LANGUAGE","JAVASCRIPT","PYTHON","SQL",
+"BEGIN","DECLARE","LET","RETURN","IF","ELSEIF","WHILE","FOR","LOOP","BREAK","CONTINUE","TRY","CATCH",
+"EXCEPTION","RAISE","RESULTSET","CURSOR","OPEN","CLOSE","FETCH","VARIANT","OBJECT","ARRAY","NUMBER",
+"STRING","TEXT","VARCHAR","CHAR","INT","INTEGER","BIGINT","SMALLINT","FLOAT","DOUBLE","BOOLEAN","DATE",
+"TIME","TIMESTAMP","TIMESTAMP_NTZ","TIMESTAMP_LTZ","TIMESTAMP_TZ","TRUE","FALSE","DESC","ASC","DEFAULT",
+"PRIMARY","KEY","FOREIGN","REFERENCES","UNIQUE","CHECK","CONSTRAINT","ALTER","ADD","DROP","RENAME","TO",
+"COLUMN","COMMENT","TAG","MASKING","POLICY","SECURE","CLONE","UNDROP","SWAP","SEQUENCE","NEXTVAL",
+"AUTOINCREMENT","IDENTITY","QUALIFY","SAMPLE","TABLESAMPLE","LATERAL","FLATTEN","PIVOT","UNPIVOT",
+"TO_DATE","TO_TIMESTAMP","TO_CHAR","TO_VARCHAR","TO_NUMBER","TO_DECIMAL","TO_BOOLEAN","TO_ARRAY",
+"TO_OBJECT","TO_VARIANT","DATEADD","DATEDIFF","DATE_TRUNC","DATE_PART","CURRENT_DATE","CURRENT_TIMESTAMP",
+"CURRENT_USER","CURRENT_ROLE","CURRENT_WAREHOUSE","CURRENT_DATABASE","CURRENT_SCHEMA","CURRENT_ACCOUNT",
+"OBJECT_CONSTRUCT","ARRAY_CONSTRUCT","ARRAY_AGG","PARSE_JSON","TRY_PARSE_JSON","GET_PATH","LISTAGG",
+"SPLIT","SPLIT_PART","REGEXP_SUBSTR","REGEXP_REPLACE","REGEXP_LIKE","TRIM","LTRIM","RTRIM","UPPER",
+"LOWER","INITCAP","LENGTH","LEN","SUBSTR","SUBSTRING","REPLACE","CONCAT","CONCAT_WS","ROUND","FLOOR",
+"CEIL","CEILING","ABS","POWER","SQRT","MOD","RANDOM","UUID_STRING","MD5","SHA1","SHA2","HASH","COUNT",
+"SUM","AVG","MIN","MAX","STDDEV","VARIANCE","MEDIAN","RANK","DENSE_RANK","ROW_NUMBER","NTILE","LAG",
+"LEAD","FIRST_VALUE","LAST_VALUE","CAST","TRY_CAST","CONVERT","COALESCE","NULLIF","IFF","IF","DECODE",
+"ZEROIFNULL","NVL","NVL2","GREATEST","LEAST","ANY","SOME","EXTRACT","YEAR","MONTH","DAY","HOUR","MINUTE",
+"SECOND","WEEK","QUARTER","DAYOFWEEK","DAYOFYEAR","EQUALS","VALUE","KEY","OBJECT_KEYS","ARRAY_SIZE",
+"ARRAY_CONTAINS","IS_NULL_VALUE","GET","GET_IGNORE_CASE","AUTO","NOCACHE","CACHE","RESULT_SCAN",
+"LAST_QUERY_ID","SYSDATE","LOCALTIME","LOCALTIMESTAMP","VOLATILE","IMMUTABLE","STABLE","STRICT",
+"EXECUTE","IMMEDIATE","AS_OF","AT","BEFORE","STATEMENT","TRANSACTION","COMMIT","ROLLBACK","OWNERSHIP",
+"FUTURE","SHOW","DESCRIBE","EXPLAIN","LIST","REMOVE","ENCRYPTION","CREDENTIALS","URL","PATTERN",
+"HEADER","SKIP_HEADER","FIELD_DELIMITER","RECORD_DELIMITER","COMPRESSION","ON_ERROR","PURGE","OVERWRITE",
+"SINGLE","MAX_FILE_SIZE","FORCE"
+]);
+
+function escapeRegExp(s) {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function guessCategory(code, index, token) {
+  const before = code.slice(Math.max(0, index - 40), index).toUpperCase();
+  if (/(?:FROM|JOIN|INTO|UPDATE|TABLE|VIEW)\s*$/.test(before)) return "Table";
+  if (/(?:DECLARE|LET)\s*$/.test(before)) return "Variable";
+  if (/:=\s*$/.test(before)) return "Variable";
+  if (/(?:DATABASE)\s*$/.test(before)) return "Database";
+  if (/(?:SCHEMA)\s*$/.test(before)) return "Schema";
+  if (/(?:PROCEDURE|FUNCTION|CALL)\s*$/.test(before)) return "Procedure";
+  return "Column";
+}
+
+// Detects db.schema.table / schema.table qualified names after FROM/JOIN/INTO/UPDATE/TABLE/VIEW
+// and returns a map of each individual part (e.g. "db1", "schema1", "table1") to its correct
+// category, so the per-part category guess below isn't stuck defaulting to "Column".
+function buildQualifiedNameOverrides(code) {
+  const overrides = {};
+  const qualRegex = /\b(?:FROM|JOIN|INTO|UPDATE|TABLE|VIEW)\s+("?[A-Za-z_][A-Za-z0-9_]*"?(?:\s*\.\s*"?[A-Za-z_][A-Za-z0-9_]*"?){0,2})/gi;
+  let m;
+  while ((m = qualRegex.exec(code)) !== null) {
+    const parts = m[1].split(/\s*\.\s*/).map(p => p.replace(/^"|"$/g, ''));
+    let labels;
+    if (parts.length === 3) labels = ["Database", "Schema", "Table"];
+    else if (parts.length === 2) labels = ["Schema", "Table"];
+    else labels = ["Table"];
+    parts.forEach((p, i) => {
+      if (!overrides[p]) overrides[p] = labels[i];
+    });
+  }
+  return overrides;
+}
+
+function scanCode() {
+  const code = document.getElementById('inputCode').value;
+  if (!code.trim()) { document.getElementById('scanNote').textContent = "Paste some code first."; return; }
+  const regex = /\b[A-Za-z_][A-Za-z0-9_]*\b/g;
+  const qualifiedOverrides = buildQualifiedNameOverrides(code);
+  const freq = {}; // canonical (uppercased) -> {original, count, firstIndex, category}
+  let m;
+  while ((m = regex.exec(code)) !== null) {
+    const token = m[0];
+    const upper = token.toUpperCase();
+    if (KEYWORDS.has(upper)) continue;
+    if (/^\d+$/.test(token)) continue;
+    if (!freq[upper]) {
+      const category = qualifiedOverrides[token] || qualifiedOverrides[upper] || guessCategory(code, m.index, token);
+      freq[upper] = { original: token, count: 0, firstIndex: m.index, category };
+    }
+    freq[upper].count++;
+  }
+  candidates = candidates.filter(c => c.mode === 'substring'); // keep manual entries
+  let idCounter = candidates.length;
+  const counters = {};
+  Object.keys(freq).sort((a,b) => freq[b].count - freq[a].count).forEach(key => {
+    const info = freq[key];
+    counters[info.category] = (counters[info.category] || 0) + 1;
+    candidates.push({
+      id: idCounter++,
+      original: info.original,
+      occurrences: info.count,
+      category: info.category,
+      generic: info.category + "_" + counters[info.category],
+      selected: true,
+      mode: 'word'
+    });
+  });
+  document.getElementById('scanNote').textContent = `Found ${Object.keys(freq).length} candidate identifier(s) (case-insensitive matches merged).`;
+  document.getElementById('candidatesPanel').style.display = 'block';
+  renderCandidates();
+}
+
+function renderCandidates() {
+  const body = document.getElementById('candBody');
+  body.innerHTML = '';
+  candidates.forEach(c => {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td><input type="checkbox" ${c.selected ? 'checked':''} onchange="updateCand(${c.id},'selected',this.checked)"></td>
+      <td>${escapeHtml(c.original)}</td>
+      <td>${c.mode === 'word' ? c.occurrences : '(text)'}</td>
+      <td>
+        <select onchange="updateCand(${c.id},'category',this.value)">
+          ${["Table","Column","Variable","Schema","Database","Procedure","Custom","Other"].map(cat =>
+            `<option value="${cat}" ${c.category===cat?'selected':''}>${cat}</option>`).join('')}
+        </select>
+      </td>
+      <td><input type="text" value="${escapeHtml(c.generic)}" onchange="updateCand(${c.id},'generic',this.value)"></td>
+    `;
+    body.appendChild(tr);
+  });
+  document.getElementById('candCount').textContent = `(${candidates.length} total, ${candidates.filter(c=>c.selected).length} selected)`;
+}
+
+function updateCand(id, field, value) {
+  const c = candidates.find(c => c.id === id);
+  if (c) c[field] = value;
+  if (field === 'selected' || field === 'category') renderCandidates();
+}
+
+function toggleAll(val) {
+  candidates.forEach(c => c.selected = val);
+  renderCandidates();
+}
+
+function renumber() {
+  const counters = {};
+  candidates.forEach(c => {
+    counters[c.category] = (counters[c.category] || 0) + 1;
+    c.generic = c.category + "_" + counters[c.category];
+  });
+  renderCandidates();
+}
+
+function addCustom() {
+  const orig = document.getElementById('customOriginal').value.trim();
+  const gen = document.getElementById('customGeneric').value.trim();
+  if (!orig || !gen) return;
+  candidates.push({
+    id: candidates.length ? Math.max(...candidates.map(c=>c.id))+1 : 0,
+    original: orig, occurrences: 0, category: 'Custom', generic: gen, selected: true, mode: 'substring'
+  });
+  document.getElementById('customOriginal').value = '';
+  document.getElementById('customGeneric').value = '';
+  renderCandidates();
+}
+
+function escapeHtml(s) {
+  return s.replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+function generateAnonymized() {
+  let code = document.getElementById('inputCode').value;
+  const selected = candidates.filter(c => c.selected).sort((a,b) => b.original.length - a.original.length);
+  selected.forEach(c => {
+    if (c.mode === 'word') {
+      const re = new RegExp('\\b' + escapeRegExp(c.original) + '\\b', 'gi');
+      code = code.replace(re, c.generic);
+    } else {
+      code = code.split(c.original).join(c.generic);
+    }
+  });
+  document.getElementById('outputCode').value = code;
+  const dictLines = ["Generic\tOriginal\tCategory"];
+  selected.forEach(c => dictLines.push(`${c.generic}\t${c.original}\t${c.category}`));
+  document.getElementById('outputDict').value = dictLines.join('\n');
+  document.getElementById('outputPanel').style.display = 'block';
+  saveDict(selected);
+  renderDictView();
+}
+
+function copyText(id) {
+  const el = document.getElementById(id);
+  el.select();
+  try { document.execCommand('copy'); } catch(e) {}
+  if (navigator.clipboard) { navigator.clipboard.writeText(el.value).catch(()=>{}); }
+}
+
+function downloadText(text, filename) {
+  const blob = new Blob([text], {type: 'text/plain'});
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = filename;
+  a.click();
+}
+
+function downloadDictCSV() {
+  const selected = candidates.filter(c => c.selected);
+  let csv = "Generic,Original,Category\n";
+  selected.forEach(c => {
+    csv += `"${c.generic.replace(/"/g,'""')}","${c.original.replace(/"/g,'""')}","${c.category}"\n`;
+  });
+  downloadText(csv, "anonymizer_dictionary.csv");
+}
+
+function saveDict(list) {
+  try {
+    localStorage.setItem('snowanon_dict', JSON.stringify(list));
+  } catch(e) {}
+}
+
+function loadDict() {
+  try {
+    const raw = localStorage.getItem('snowanon_dict');
+    if (raw) return JSON.parse(raw);
+  } catch(e) {}
+  return [];
+}
+
+function renderDictView() {
+  const list = candidates.filter(c => c.selected).length ? candidates.filter(c => c.selected) : loadDict();
+  const body = document.getElementById('dictViewBody');
+  body.innerHTML = '';
+  list.forEach(c => {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `<td>${escapeHtml(c.generic)}</td><td>${escapeHtml(c.original)}</td><td>${c.category}</td>`;
+    body.appendChild(tr);
+  });
+}
+
+function restoreText() {
+  const list = candidates.length ? candidates.filter(c => c.selected) : loadDict();
+  if (!list.length) {
+    document.getElementById('restoreNote').textContent = "No dictionary found. Run step 1 first.";
+    return;
+  }
+  let text = document.getElementById('restoreInput').value;
+  const sorted = [...list].sort((a,b) => b.generic.length - a.generic.length);
+  sorted.forEach(c => {
+    const re = new RegExp('\\b' + escapeRegExp(c.generic) + '\\b', 'g');
+    text = text.replace(re, c.original);
+  });
+  document.getElementById('restoreOutput').value = text;
+  document.getElementById('restoreNote').textContent = `Replaced using ${sorted.length} dictionary entries.`;
+}
+
+function clearSaved() {
+  try { localStorage.removeItem('snowanon_dict'); } catch(e) {}
+  document.getElementById('dictViewBody').innerHTML = '';
+  document.getElementById('restoreNote').textContent = "Saved dictionary cleared.";
+}
+
+function showTab(n) {
+  document.getElementById('tab1').classList.toggle('hidden', n !== 1);
+  document.getElementById('tab2').classList.toggle('hidden', n !== 2);
+  document.getElementById('tabBtn1').classList.toggle('active', n === 1);
+  document.getElementById('tabBtn2').classList.toggle('active', n === 2);
+  if (n === 2) renderDictView();
+}
+
+// on load, populate dict view from saved storage
+window.addEventListener('DOMContentLoaded', renderDictView);
+</script>
+</body>
+</html>
