@@ -255,23 +255,89 @@ function escapeRegExp(s) {
 
 function guessCategory(code, index, token) {
   const before = code.slice(Math.max(0, index - 40), index).toUpperCase();
+  if (/\bAS\s*$/.test(before)) return "Alias";
   if (/(?:FROM|JOIN|INTO|UPDATE|TABLE|VIEW)\s*$/.test(before)) return "Table";
   if (/(?:DECLARE|LET)\s*$/.test(before)) return "Variable";
   if (/:=\s*$/.test(before)) return "Variable";
   if (/(?:DATABASE)\s*$/.test(before)) return "Database";
   if (/(?:SCHEMA)\s*$/.test(before)) return "Schema";
   if (/(?:PROCEDURE|FUNCTION|CALL)\s*$/.test(before)) return "Procedure";
+  // Implicit alias: another plain identifier sits directly before this one,
+  // separated only by whitespace (no comma, dot, or operator) — e.g.
+  // "SELECT real_col alias_name" or "FROM real_table t". If that previous
+  // word is itself a keyword (FROM, BY, SELECT, etc.) the checks above
+  // already returned, so reaching here means it's a genuine identifier.
+  const implicitAliasMatch = before.match(/([A-Za-z_][A-Za-z0-9_]*)(\s+)$/);
+  if (implicitAliasMatch && !KEYWORDS.has(implicitAliasMatch[1])) return "Alias";
   return "Column";
+}
+
+// Walks the code once, character by character, to find spans that are
+// line comments (--...), block comments (/*...*/), or single-quoted string
+// literals ('...', with '' as an escaped quote). Identifiers found inside
+// these spans are not real table/column/variable names, so they're excluded
+// from scanning and replacement. Double-quoted identifiers ("MyTable") are
+// left alone since those ARE real (case-sensitive) identifiers.
+function findExcludedRanges(code) {
+  const ranges = [];
+  let i = 0;
+  const n = code.length;
+  while (i < n) {
+    const c = code[i], c2 = code[i + 1];
+    if (c === '-' && c2 === '-') {
+      const start = i;
+      let j = code.indexOf('\n', i);
+      if (j === -1) j = n;
+      ranges.push([start, j]);
+      i = j;
+    } else if (c === '/' && c2 === '*') {
+      const start = i;
+      let j = code.indexOf('*/', i + 2);
+      j = (j === -1) ? n : j + 2;
+      ranges.push([start, j]);
+      i = j;
+    } else if (c === "'") {
+      const start = i;
+      let j = i + 1;
+      while (j < n) {
+        if (code[j] === "'") {
+          if (code[j + 1] === "'") { j += 2; continue; }
+          j += 1;
+          break;
+        }
+        j++;
+      }
+      ranges.push([start, j]);
+      i = j;
+    } else {
+      i++;
+    }
+  }
+  return ranges;
+}
+
+// Ranges are produced in left-to-right scan order, so a binary search works.
+function isInRanges(idx, ranges) {
+  let lo = 0, hi = ranges.length - 1;
+  while (lo <= hi) {
+    const mid = (lo + hi) >> 1;
+    const [s, e] = ranges[mid];
+    if (idx < s) hi = mid - 1;
+    else if (idx >= e) lo = mid + 1;
+    else return true;
+  }
+  return false;
 }
 
 // Detects db.schema.table / schema.table qualified names after FROM/JOIN/INTO/UPDATE/TABLE/VIEW
 // and returns a map of each individual part (e.g. "db1", "schema1", "table1") to its correct
 // category, so the per-part category guess below isn't stuck defaulting to "Column".
-function buildQualifiedNameOverrides(code) {
+function buildQualifiedNameOverrides(code, excludedRanges) {
   const overrides = {};
   const qualRegex = /\b(?:FROM|JOIN|INTO|UPDATE|TABLE|VIEW)\s+("?[A-Za-z_][A-Za-z0-9_]*"?(?:\s*\.\s*"?[A-Za-z_][A-Za-z0-9_]*"?){0,2})/gi;
   let m;
   while ((m = qualRegex.exec(code)) !== null) {
+    if (isInRanges(m.index, excludedRanges)) continue;
     const parts = m[1].split(/\s*\.\s*/).map(p => p.replace(/^"|"$/g, ''));
     let labels;
     if (parts.length === 3) labels = ["Database", "Schema", "Table"];
@@ -288,10 +354,12 @@ function scanCode() {
   const code = document.getElementById('inputCode').value;
   if (!code.trim()) { document.getElementById('scanNote').textContent = "Paste some code first."; return; }
   const regex = /\b[A-Za-z_][A-Za-z0-9_]*\b/g;
-  const qualifiedOverrides = buildQualifiedNameOverrides(code);
+  const excludedRanges = findExcludedRanges(code);
+  const qualifiedOverrides = buildQualifiedNameOverrides(code, excludedRanges);
   const freq = {}; // canonical (uppercased) -> {original, count, firstIndex, category}
-  let m;
+  let m, skipped = 0;
   while ((m = regex.exec(code)) !== null) {
+    if (isInRanges(m.index, excludedRanges)) { skipped++; continue; }
     const token = m[0];
     const upper = token.toUpperCase();
     if (KEYWORDS.has(upper)) continue;
@@ -318,7 +386,8 @@ function scanCode() {
       mode: 'word'
     });
   });
-  document.getElementById('scanNote').textContent = `Found ${Object.keys(freq).length} candidate identifier(s) (case-insensitive matches merged).`;
+  document.getElementById('scanNote').textContent =
+    `Found ${Object.keys(freq).length} candidate identifier(s) (case-insensitive matches merged, comments and string literals ignored).`;
   document.getElementById('candidatesPanel').style.display = 'block';
   renderCandidates();
 }
@@ -334,7 +403,7 @@ function renderCandidates() {
       <td>${c.mode === 'word' ? c.occurrences : '(text)'}</td>
       <td>
         <select onchange="updateCand(${c.id},'category',this.value)">
-          ${["Table","Column","Variable","Schema","Database","Procedure","Custom","Other"].map(cat =>
+          ${["Table","Column","Alias","Variable","Schema","Database","Procedure","Custom","Other"].map(cat =>
             `<option value="${cat}" ${c.category===cat?'selected':''}>${cat}</option>`).join('')}
         </select>
       </td>
@@ -382,18 +451,40 @@ function escapeHtml(s) {
   return s.replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 }
 
-function generateAnonymized() {
-  let code = document.getElementById('inputCode').value;
-  const selected = candidates.filter(c => c.selected).sort((a,b) => b.original.length - a.original.length);
-  selected.forEach(c => {
-    if (c.mode === 'word') {
-      const re = new RegExp('\\b' + escapeRegExp(c.original) + '\\b', 'gi');
-      code = code.replace(re, c.generic);
-    } else {
-      code = code.split(c.original).join(c.generic);
+// Single left-to-right pass over the ORIGINAL code: copies text through unchanged
+// except where a selected word-mode candidate matches, and never touches anything
+// inside a comment or string-literal span. Doing this as one pass (rather than one
+// regex.replace per candidate) avoids offset drift and avoids one candidate's
+// generic name accidentally colliding with another candidate's original text.
+function applyWordReplacements(code, wordCandidates, excludedRanges) {
+  const map = {};
+  wordCandidates.forEach(c => { map[c.original.toUpperCase()] = c.generic; });
+  const regex = /\b[A-Za-z_][A-Za-z0-9_]*\b/g;
+  let result = '', lastIndex = 0, m;
+  while ((m = regex.exec(code)) !== null) {
+    const idx = m.index;
+    if (isInRanges(idx, excludedRanges)) continue;
+    const upper = m[0].toUpperCase();
+    if (Object.prototype.hasOwnProperty.call(map, upper)) {
+      result += code.slice(lastIndex, idx) + map[upper];
+      lastIndex = idx + m[0].length;
     }
+  }
+  result += code.slice(lastIndex);
+  return result;
+}
+
+function generateAnonymized() {
+  const code = document.getElementById('inputCode').value;
+  const selected = candidates.filter(c => c.selected);
+  const wordCandidates = selected.filter(c => c.mode === 'word');
+  const substringCandidates = selected.filter(c => c.mode === 'substring').sort((a,b) => b.original.length - a.original.length);
+  const excludedRanges = findExcludedRanges(code);
+  let result = applyWordReplacements(code, wordCandidates, excludedRanges);
+  substringCandidates.forEach(c => {
+    result = result.split(c.original).join(c.generic);
   });
-  document.getElementById('outputCode').value = code;
+  document.getElementById('outputCode').value = result;
   const dictLines = ["Generic\tOriginal\tCategory"];
   selected.forEach(c => dictLines.push(`${c.generic}\t${c.original}\t${c.category}`));
   document.getElementById('outputDict').value = dictLines.join('\n');
