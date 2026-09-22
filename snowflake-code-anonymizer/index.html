@@ -183,7 +183,22 @@
   <div id="tab2" class="hidden">
     <div class="panel">
       <h2>Restore original names</h2>
-      <div class="note">Paste the AI-generated documentation (which contains the generic names) below. It will use the dictionary built in tab 1 to swap generic names back to your real ones.</div>
+      <div class="note">Load the dictionary from Tab 1 by either uploading the downloaded CSV or pasting the copied dictionary. Then paste the AI-generated documentation below to restore the original names.</div>
+
+      <h2 style="margin-top:14px;">Load dictionary</h2>
+      <div class="row">
+        <input type="file" id="dictFile" accept=".csv,.tsv,.txt" style="font-size:12px;">
+        <button class="secondary small" onclick="loadDictionaryFile()">Upload dictionary</button>
+        <button class="secondary small" onclick="loadDictionaryFromPaste()">Load pasted dictionary</button>
+      </div>
+      <label>Paste dictionary (from Tab 1)</label>
+      <textarea id="dictInput" style="min-height:120px;" placeholder="Paste the copied dictionary here...
+Generic	Original	Category
+Table_A	REAL_TABLE	Table
+Column_1	REAL_COLUMN	Column
+Table_Alias_1	A	Table Alias"></textarea>
+      <div class="note" id="dictLoadNote"></div>
+
       <label style="margin-top:10px;">Text to restore</label>
       <textarea id="restoreInput" placeholder="Paste the AI's output here..."></textarea>
       <div class="row">
@@ -214,6 +229,7 @@
 
 <script>
 let candidates = []; // {id, original, occurrences, category, generic, selected, mode}
+window.importedDictionary = [];
 
 const KEYWORDS = new Set([
 "SELECT","FROM","WHERE","GROUP","BY","ORDER","HAVING","JOIN","INNER","LEFT","RIGHT","FULL","OUTER","CROSS",
@@ -260,24 +276,179 @@ function escapeRegExp(s) {
 // trustworthy enough to include (a commented-out "FROM real_table" is clearly
 // SQL, not prose) versus noise (a comment that happens to contain the word
 // "from" in a sentence, with nothing else identifying it as an identifier).
-function guessCategory(code, index, token) {
-  const before = code.slice(Math.max(0, index - 40), index).toUpperCase();
-  if (/\bAS\s*$/.test(before)) return { category: "Alias", contextual: true };
-  if (/(?:FROM|JOIN|INTO|UPDATE|TABLE|VIEW)\s*$/.test(before)) return { category: "Table", contextual: true };
-  if (/(?:DECLARE|LET)\s*$/.test(before)) return { category: "Variable", contextual: true };
-  if (/:=\s*$/.test(before)) return { category: "Variable", contextual: true };
-  if (/(?:DATABASE)\s*$/.test(before)) return { category: "Database", contextual: true };
-  if (/(?:SCHEMA)\s*$/.test(before)) return { category: "Schema", contextual: true };
-  if (/(?:PROCEDURE|FUNCTION|CALL)\s*$/.test(before)) return { category: "Procedure", contextual: true };
-  // Implicit alias: another plain identifier sits directly before this one,
-  // separated only by whitespace (no comma, dot, or operator) — e.g.
-  // "SELECT real_col alias_name" or "FROM real_table t". If that previous
-  // word is itself a keyword (FROM, BY, SELECT, etc.) the checks above
-  // already returned, so reaching here means it's a genuine identifier.
-  const implicitAliasMatch = before.match(/([A-Za-z_][A-Za-z0-9_]*)(\s+)$/);
-  if (implicitAliasMatch && !KEYWORDS.has(implicitAliasMatch[1])) return { category: "Alias", contextual: true };
-  return { category: "Column", contextual: false };
+// Alias detection is context-aware. The old global
+// "identifier identifier => Alias" rule could not reliably distinguish
+// table aliases from column aliases.
+function tokenizeIdentifiers(code, stringRangesOnly) {
+  const tokens = [];
+  const re = /\b[A-Za-z_][A-Za-z0-9_]*\b/g;
+  let m;
+  while ((m = re.exec(code)) !== null) {
+    if (isInRanges(m.index, stringRangesOnly)) continue;
+    tokens.push({ text:m[0], upper:m[0].toUpperCase(), index:m.index, end:m.index+m[0].length });
+  }
+  return tokens;
 }
+
+function nextToken(tokens, i) {
+  return i + 1 < tokens.length ? tokens[i + 1] : null;
+}
+
+function previousToken(tokens, i) {
+  return i > 0 ? tokens[i - 1] : null;
+}
+
+// Detect table aliases in:
+//   FROM table a
+//   FROM table AS a
+//   FROM schema.table a
+//   JOIN db.schema.table AS t
+function buildTableAliasOverrides(code, stringRangesOnly) {
+  const overrides = {};
+  const tokens = tokenizeIdentifiers(code, stringRangesOnly);
+  const sourceWords = new Set(["FROM","JOIN","INTO","UPDATE","TABLE","VIEW","USING"]);
+  const stopWords = new Set([
+    "ON","WHERE","GROUP","ORDER","HAVING","QUALIFY","LIMIT","OFFSET",
+    "UNION","MINUS","INTERSECT","EXCEPT","JOIN","INNER","LEFT","RIGHT",
+    "FULL","CROSS","OUTER","LATERAL","SAMPLE","TABLESAMPLE"
+  ]);
+
+  for (let i = 0; i < tokens.length; i++) {
+    if (!sourceWords.has(tokens[i].upper)) continue;
+
+    let j = i + 1;
+    if (j >= tokens.length) continue;
+
+    // FROM (SELECT ...) a / FROM TABLE(...) a
+    if (code.slice(tokens[i].end, tokens[j].index).includes("(")) {
+      let depth = 0, close = -1;
+      for (let p = tokens[i].end; p < code.length; p++) {
+        if (code[p] === "(") depth++;
+        else if (code[p] === ")") {
+          depth--;
+          if (depth === 0) { close = p; break; }
+        }
+      }
+      if (close >= 0) {
+        const am = code.slice(close + 1).match(/^\s+(?:AS\s+)?([A-Za-z_][A-Za-z0-9_]*)\b/i);
+        if (am && !KEYWORDS.has(am[1].toUpperCase())) {
+          overrides[am[1].toUpperCase()] = "Table Alias";
+        }
+      }
+      continue;
+    }
+
+    // Consume table / schema.table / db.schema.table.
+    let last = j;
+    while (
+      last + 2 < tokens.length &&
+      code.slice(tokens[last].end, tokens[last + 1].index).trim() === "." &&
+      !KEYWORDS.has(tokens[last + 1].upper)
+    ) {
+      last += 2;
+    }
+
+    const k = last + 1;
+    if (k >= tokens.length) continue;
+
+    // Explicit alias: table AS a
+    if (tokens[k].upper === "AS") {
+      const alias = nextToken(tokens, k);
+      if (alias && !KEYWORDS.has(alias.upper)) overrides[alias.upper] = "Table Alias";
+      continue;
+    }
+
+    // Implicit alias: table a
+    const candidate = tokens[k];
+    const gap = code.slice(tokens[last].end, candidate.index);
+    if (
+      /^\s+$/.test(gap) &&
+      !KEYWORDS.has(candidate.upper) &&
+      !stopWords.has(candidate.upper)
+    ) {
+      overrides[candidate.upper] = "Table Alias";
+    }
+  }
+  return overrides;
+}
+
+// Detect column aliases only inside SELECT lists.
+// Supports both:
+//   SELECT expression alias
+//   SELECT expression AS alias
+function buildColumnAliasOverrides(code, stringRangesOnly, tableAliasOverrides) {
+  const overrides = {};
+  const tokens = tokenizeIdentifiers(code, stringRangesOnly);
+  const clauseStops = new Set([
+    "FROM","WHERE","GROUP","ORDER","HAVING","QUALIFY","LIMIT","OFFSET",
+    "UNION","MINUS","INTERSECT","EXCEPT"
+  ]);
+
+  // Parenthesis depth for each identifier token.
+  const depthAt = [];
+  let depth = 0, ti = 0;
+  for (let p = 0; p < code.length; p++) {
+    if (code[p] === "(") depth++;
+    else if (code[p] === ")") depth = Math.max(0, depth - 1);
+    while (ti < tokens.length && tokens[ti].index === p) {
+      depthAt[ti] = depth;
+      ti++;
+    }
+  }
+
+  // Explicit SELECT expression AS alias.
+  for (let i = 0; i < tokens.length; i++) {
+    if (tokens[i].upper !== "AS") continue;
+    const alias = nextToken(tokens, i);
+    if (!alias || KEYWORDS.has(alias.upper) || tableAliasOverrides[alias.upper]) continue;
+
+    let inSelectList = false;
+    for (let j = i - 1; j >= 0; j--) {
+      if (depthAt[j] !== depthAt[i]) continue;
+      if (tokens[j].upper === "SELECT") { inSelectList = true; break; }
+      if (clauseStops.has(tokens[j].upper)) break;
+    }
+    if (inSelectList) overrides[alias.upper] = "Column Alias";
+  }
+
+  // Implicit SELECT expression alias. The important restriction is that this
+  // is ONLY evaluated while the identifier is in a SELECT list.
+  for (let i = 1; i < tokens.length; i++) {
+    const t = tokens[i];
+    if (KEYWORDS.has(t.upper) || tableAliasOverrides[t.upper] || overrides[t.upper]) continue;
+
+    const prev = previousToken(tokens, i);
+    if (!prev || KEYWORDS.has(prev.upper)) continue;
+
+    const gap = code.slice(prev.end, t.index);
+    if (!/^\s+$/.test(gap)) continue;
+
+    let inSelectList = false;
+    for (let j = i - 1; j >= 0; j--) {
+      if (depthAt[j] !== depthAt[i]) continue;
+      if (tokens[j].upper === "SELECT") { inSelectList = true; break; }
+      if (clauseStops.has(tokens[j].upper)) break;
+    }
+    if (inSelectList) overrides[t.upper] = "Column Alias";
+  }
+
+  return overrides;
+}
+
+function guessCategory(code, index, token, aliasOverrides) {
+  const upper = token.toUpperCase();
+  if (aliasOverrides[upper]) return { category: aliasOverrides[upper], contextual: true };
+
+  const before = code.slice(Math.max(0, index - 40), index).toUpperCase();
+  if (/(?:FROM|JOIN|INTO|UPDATE|TABLE|VIEW)\s*$/.test(before)) return { category:"Table", contextual:true };
+  if (/(?:DECLARE|LET)\s*$/.test(before)) return { category:"Variable", contextual:true };
+  if (/:=\s*$/.test(before)) return { category:"Variable", contextual:true };
+  if (/(?:DATABASE)\s*$/.test(before)) return { category:"Database", contextual:true };
+  if (/(?:SCHEMA)\s*$/.test(before)) return { category:"Schema", contextual:true };
+  if (/(?:PROCEDURE|FUNCTION|CALL)\s*$/.test(before)) return { category:"Procedure", contextual:true };
+  return { category:"Column", contextual:false };
+}
+
 
 // Walks the code once, character by character, to find spans that are
 // line comments (--...), block comments (/*...*/), or single-quoted string
@@ -371,6 +542,15 @@ function scanCode() {
   const stringRangesOnly = allRanges.filter(r => r.type === 'string');
   const commentRangesOnly = allRanges.filter(r => r.type === 'comment');
   const qualifiedOverrides = buildQualifiedNameOverrides(code, stringRangesOnly);
+
+  // Resolve alias roles before scanning identifiers so a table alias such as
+  // "a" is not later mistaken for a column when it appears in "a.column".
+  const tableAliasOverrides = buildTableAliasOverrides(code, stringRangesOnly);
+  const columnAliasOverrides = buildColumnAliasOverrides(
+    code, stringRangesOnly, tableAliasOverrides
+  );
+  const aliasOverrides = Object.assign({}, columnAliasOverrides, tableAliasOverrides);
+
   const freq = {}; // canonical (uppercased) -> {original, count, firstIndex, category}
   let m;
   while ((m = regex.exec(code)) !== null) {
@@ -382,7 +562,7 @@ function scanCode() {
     if (isInRanges(m.index, stringRangesOnly)) continue;
     const inComment = isInRanges(m.index, commentRangesOnly);
     const override = qualifiedOverrides[token] || qualifiedOverrides[upper];
-    const guess = guessCategory(code, m.index, token);
+    const guess = guessCategory(code, m.index, token, aliasOverrides);
     const category = override || guess.category;
     const contextual = !!override || guess.contextual;
     // Inside a comment: only keep it if something specific (FROM/JOIN/AS/etc.)
@@ -451,7 +631,7 @@ function renderCandidates() {
       <td>${c.mode !== 'substring' ? c.occurrences : '(manual)'}</td>
       <td>
         <select onchange="updateCand(${c.id},'category',this.value)">
-          ${["Table","Column","Alias","Variable","Schema","Database","Procedure","Text","Custom","Other"].map(cat =>
+          ${["Table","Column","Table Alias","Column Alias","Alias","Variable","Schema","Database","Procedure","Text","Custom","Other"].map(cat =>
             `<option value="${cat}" ${c.category===cat?'selected':''}>${cat}</option>`).join('')}
         </select>
       </td>
@@ -611,8 +791,119 @@ function renderDictView() {
   });
 }
 
+function parseDictionaryText(raw) {
+  const lines = raw.replace(/\r\n?/g, "\n").split("\n").filter(line => line.trim());
+  if (!lines.length) return [];
+
+  // Supports both the TSV produced by Copy and the CSV produced by Download.
+  const parseLine = (line) => {
+    if (line.includes("\t")) return line.split("\t");
+
+    const fields = [];
+    let field = "", quoted = false;
+    for (let i = 0; i < line.length; i++) {
+      const ch = line[i];
+      if (ch === '"') {
+        if (quoted && line[i + 1] === '"') {
+          field += '"';
+          i++;
+        } else {
+          quoted = !quoted;
+        }
+      } else if (ch === "," && !quoted) {
+        fields.push(field);
+        field = "";
+      } else {
+        field += ch;
+      }
+    }
+    fields.push(field);
+    return fields;
+  };
+
+  const first = parseLine(lines[0]).map(x => x.trim().toLowerCase());
+  const hasHeader =
+    first[0] === "generic" &&
+    first[1] === "original";
+
+  const start = hasHeader ? 1 : 0;
+  const result = [];
+
+  for (let i = start; i < lines.length; i++) {
+    const fields = parseLine(lines[i]).map(x => x.trim());
+    if (fields.length < 2 || !fields[0] || !fields[1]) continue;
+
+    result.push({
+      generic: fields[0],
+      original: fields[1],
+      category: fields[2] || "Other",
+      selected: true,
+      mode: "word",
+      occurrences: 0
+    });
+  }
+  return result;
+}
+
+function setImportedDictionary(list, sourceLabel) {
+  if (!list.length) {
+    document.getElementById('dictLoadNote').textContent =
+      "No valid dictionary rows found. Expected Generic + Original columns.";
+    return;
+  }
+
+  // Keep the imported dictionary independent of the anonymization candidates.
+  // This allows Tab 2 to work even after the browser is closed or on another
+  // machine, provided the user brings the CSV/TSV with them.
+  window.importedDictionary = list;
+
+  // Show the imported dictionary in the existing dictionary table.
+  const body = document.getElementById('dictViewBody');
+  body.innerHTML = '';
+  list.forEach(c => {
+    const tr = document.createElement('tr');
+    tr.innerHTML =
+      `<td>${escapeHtml(c.generic)}</td>` +
+      `<td>${escapeHtml(c.original)}</td>` +
+      `<td>${escapeHtml(c.category)}</td>`;
+    body.appendChild(tr);
+  });
+
+  document.getElementById('dictLoadNote').textContent =
+    `Loaded ${list.length} dictionary entr${list.length === 1 ? 'y' : 'ies'} from ${sourceLabel}.`;
+}
+
+function loadDictionaryFromPaste() {
+  const raw = document.getElementById('dictInput').value;
+  setImportedDictionary(parseDictionaryText(raw), "pasted dictionary");
+}
+
+function loadDictionaryFile() {
+  const input = document.getElementById('dictFile');
+  if (!input.files || !input.files.length) {
+    document.getElementById('dictLoadNote').textContent = "Choose a dictionary CSV/TSV file first.";
+    return;
+  }
+
+  const file = input.files[0];
+  const reader = new FileReader();
+
+  reader.onload = function(e) {
+    const list = parseDictionaryText(String(e.target.result || ""));
+    setImportedDictionary(list, file.name);
+  };
+
+  reader.onerror = function() {
+    document.getElementById('dictLoadNote').textContent = "Could not read the selected dictionary file.";
+  };
+
+  reader.readAsText(file);
+}
+
 function restoreText() {
-  const list = candidates.length ? candidates.filter(c => c.selected) : loadDict();
+  const list = (window.importedDictionary && window.importedDictionary.length)
+    ? window.importedDictionary
+    : (candidates.length ? candidates.filter(c => c.selected) : loadDict());
   if (!list.length) {
     document.getElementById('restoreNote').textContent = "No dictionary found. Run step 1 first.";
     return;
