@@ -833,12 +833,16 @@ function parseDictionaryText(raw) {
     const fields = parseLine(lines[i]).map(x => x.trim());
     if (fields.length < 2 || !fields[0] || !fields[1]) continue;
 
+    const category = fields[2] || "Other";
     result.push({
       generic: fields[0],
       original: fields[1],
-      category: fields[2] || "Other",
+      category: category,
       selected: true,
-      mode: "word",
+      // Text entries were anonymized as complete quoted literals. Keep their
+      // type so restoration can handle them as literals rather than ordinary
+      // SQL identifiers.
+      mode: category === "Text" ? "literal" : "word",
       occurrences: 0
     });
   }
@@ -904,18 +908,67 @@ function restoreText() {
   const list = (window.importedDictionary && window.importedDictionary.length)
     ? window.importedDictionary
     : (candidates.length ? candidates.filter(c => c.selected) : loadDict());
+
   if (!list.length) {
     document.getElementById('restoreNote').textContent = "No dictionary found. Run step 1 first.";
     return;
   }
+
   let text = document.getElementById('restoreInput').value;
-  const sorted = [...list].sort((a,b) => b.generic.length - a.generic.length);
-  sorted.forEach(c => {
-    const re = new RegExp('\\b' + escapeRegExp(c.generic) + '\\b', 'g');
+
+  const escapeRe = s => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+  // Text values need special handling because the AI may reproduce the
+  // anonymized value in either form:
+  //
+  //   'Text_1'       <- quoted SQL literal
+  //   Text_1         <- unquoted token in generated SQL/documentation
+  //
+  // The dictionary stores the original quoted literal, so in BOTH cases we
+  // restore the original literal exactly, including its quotes.
+  const textEntries = list
+    .filter(c => c.category === "Text")
+    .sort((a,b) => b.generic.length - a.generic.length);
+
+  textEntries.forEach(c => {
+    const generic = c.generic;
+    const original = c.original;
+
+    if (!generic) return;
+
+    // First replace the exact generic literal, e.g. 'Text_1'.
+    text = text.split(generic).join(original);
+
+    // Then replace the bare token, e.g. Text_1.
+    // Word boundaries prevent Text_10 from accidentally matching Text_1.
+    let bareGeneric = generic;
+    if (
+      bareGeneric.length >= 2 &&
+      ((bareGeneric[0] === "'" && bareGeneric[bareGeneric.length - 1] === "'") ||
+       (bareGeneric[0] === '"' && bareGeneric[bareGeneric.length - 1] === '"'))
+    ) {
+      bareGeneric = bareGeneric.slice(1, -1);
+    }
+
+    if (bareGeneric) {
+      const bareRe = new RegExp('\\b' + escapeRe(bareGeneric) + '\\b', 'g');
+      text = text.replace(bareRe, original);
+    }
+  });
+
+  // Restore ordinary identifiers separately.
+  const wordEntries = list
+    .filter(c => c.category !== "Text")
+    .sort((a,b) => b.generic.length - a.generic.length);
+
+  wordEntries.forEach(c => {
+    const re = new RegExp('\\b' + escapeRe(c.generic) + '\\b', 'g');
     text = text.replace(re, c.original);
   });
+
   document.getElementById('restoreOutput').value = text;
-  document.getElementById('restoreNote').textContent = `Replaced using ${sorted.length} dictionary entries.`;
+  document.getElementById('restoreNote').textContent =
+    `Restored ${list.length} dictionary entr${list.length === 1 ? 'y' : 'ies'}, including ${textEntries.length} text literal entr${textEntries.length === 1 ? 'y' : 'ies'}.`;
 }
 
 function clearSaved() {
