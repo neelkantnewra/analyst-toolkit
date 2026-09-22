@@ -253,31 +253,41 @@ function escapeRegExp(s) {
   return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
+// Returns { category, contextual }. "contextual" means a specific SQL keyword
+// pattern (FROM/JOIN/AS/DECLARE/etc.) actually matched — as opposed to the bare
+// fallback of "just call it a Column because nothing else fired." This
+// distinction lets scanCode() decide whether a match found inside a COMMENT is
+// trustworthy enough to include (a commented-out "FROM real_table" is clearly
+// SQL, not prose) versus noise (a comment that happens to contain the word
+// "from" in a sentence, with nothing else identifying it as an identifier).
 function guessCategory(code, index, token) {
   const before = code.slice(Math.max(0, index - 40), index).toUpperCase();
-  if (/\bAS\s*$/.test(before)) return "Alias";
-  if (/(?:FROM|JOIN|INTO|UPDATE|TABLE|VIEW)\s*$/.test(before)) return "Table";
-  if (/(?:DECLARE|LET)\s*$/.test(before)) return "Variable";
-  if (/:=\s*$/.test(before)) return "Variable";
-  if (/(?:DATABASE)\s*$/.test(before)) return "Database";
-  if (/(?:SCHEMA)\s*$/.test(before)) return "Schema";
-  if (/(?:PROCEDURE|FUNCTION|CALL)\s*$/.test(before)) return "Procedure";
+  if (/\bAS\s*$/.test(before)) return { category: "Alias", contextual: true };
+  if (/(?:FROM|JOIN|INTO|UPDATE|TABLE|VIEW)\s*$/.test(before)) return { category: "Table", contextual: true };
+  if (/(?:DECLARE|LET)\s*$/.test(before)) return { category: "Variable", contextual: true };
+  if (/:=\s*$/.test(before)) return { category: "Variable", contextual: true };
+  if (/(?:DATABASE)\s*$/.test(before)) return { category: "Database", contextual: true };
+  if (/(?:SCHEMA)\s*$/.test(before)) return { category: "Schema", contextual: true };
+  if (/(?:PROCEDURE|FUNCTION|CALL)\s*$/.test(before)) return { category: "Procedure", contextual: true };
   // Implicit alias: another plain identifier sits directly before this one,
   // separated only by whitespace (no comma, dot, or operator) — e.g.
   // "SELECT real_col alias_name" or "FROM real_table t". If that previous
   // word is itself a keyword (FROM, BY, SELECT, etc.) the checks above
   // already returned, so reaching here means it's a genuine identifier.
   const implicitAliasMatch = before.match(/([A-Za-z_][A-Za-z0-9_]*)(\s+)$/);
-  if (implicitAliasMatch && !KEYWORDS.has(implicitAliasMatch[1])) return "Alias";
-  return "Column";
+  if (implicitAliasMatch && !KEYWORDS.has(implicitAliasMatch[1])) return { category: "Alias", contextual: true };
+  return { category: "Column", contextual: false };
 }
 
 // Walks the code once, character by character, to find spans that are
 // line comments (--...), block comments (/*...*/), or single-quoted string
-// literals ('...', with '' as an escaped quote). Identifiers found inside
-// these spans are not real table/column/variable names, so they're excluded
-// from scanning and replacement. Double-quoted identifiers ("MyTable") are
-// left alone since those ARE real (case-sensitive) identifiers.
+// literals ('...', with '' as an escaped quote). Double-quoted identifiers
+// ("MyTable") are left alone since those ARE real (case-sensitive) identifiers.
+// Each range is tagged with its type: comments are excluded from candidate
+// SCANNING (so plain English in a comment doesn't pollute the identifier
+// list) but NOT from REPLACEMENT (so a real identifier that appears again
+// inside a commented-out query, e.g. "-- SELECT * FROM real_table", still
+// gets swapped like everywhere else). String literals are excluded from both.
 function findExcludedRanges(code) {
   const ranges = [];
   let i = 0;
@@ -288,13 +298,13 @@ function findExcludedRanges(code) {
       const start = i;
       let j = code.indexOf('\n', i);
       if (j === -1) j = n;
-      ranges.push([start, j]);
+      ranges.push({ start, end: j, type: 'comment' });
       i = j;
     } else if (c === '/' && c2 === '*') {
       const start = i;
       let j = code.indexOf('*/', i + 2);
       j = (j === -1) ? n : j + 2;
-      ranges.push([start, j]);
+      ranges.push({ start, end: j, type: 'comment' });
       i = j;
     } else if (c === "'") {
       const start = i;
@@ -307,7 +317,7 @@ function findExcludedRanges(code) {
         }
         j++;
       }
-      ranges.push([start, j]);
+      ranges.push({ start, end: j, type: 'string' });
       i = j;
     } else {
       i++;
@@ -317,13 +327,14 @@ function findExcludedRanges(code) {
 }
 
 // Ranges are produced in left-to-right scan order, so a binary search works.
+// Filtering the array (e.g. to strings-only) preserves that order.
 function isInRanges(idx, ranges) {
   let lo = 0, hi = ranges.length - 1;
   while (lo <= hi) {
     const mid = (lo + hi) >> 1;
-    const [s, e] = ranges[mid];
-    if (idx < s) hi = mid - 1;
-    else if (idx >= e) lo = mid + 1;
+    const r = ranges[mid];
+    if (idx < r.start) hi = mid - 1;
+    else if (idx >= r.end) lo = mid + 1;
     else return true;
   }
   return false;
@@ -332,12 +343,14 @@ function isInRanges(idx, ranges) {
 // Detects db.schema.table / schema.table qualified names after FROM/JOIN/INTO/UPDATE/TABLE/VIEW
 // and returns a map of each individual part (e.g. "db1", "schema1", "table1") to its correct
 // category, so the per-part category guess below isn't stuck defaulting to "Column".
-function buildQualifiedNameOverrides(code, excludedRanges) {
+// Only skips matches inside STRING literals — a qualified name in a comment (e.g. a commented-out
+// "FROM db1.schema1.table1") is still a clear, contextual SQL reference and gets picked up.
+function buildQualifiedNameOverrides(code, stringRangesOnly) {
   const overrides = {};
   const qualRegex = /\b(?:FROM|JOIN|INTO|UPDATE|TABLE|VIEW)\s+("?[A-Za-z_][A-Za-z0-9_]*"?(?:\s*\.\s*"?[A-Za-z_][A-Za-z0-9_]*"?){0,2})/gi;
   let m;
   while ((m = qualRegex.exec(code)) !== null) {
-    if (isInRanges(m.index, excludedRanges)) continue;
+    if (isInRanges(m.index, stringRangesOnly)) continue;
     const parts = m[1].split(/\s*\.\s*/).map(p => p.replace(/^"|"$/g, ''));
     let labels;
     if (parts.length === 3) labels = ["Database", "Schema", "Table"];
@@ -354,22 +367,44 @@ function scanCode() {
   const code = document.getElementById('inputCode').value;
   if (!code.trim()) { document.getElementById('scanNote').textContent = "Paste some code first."; return; }
   const regex = /\b[A-Za-z_][A-Za-z0-9_]*\b/g;
-  const excludedRanges = findExcludedRanges(code);
-  const qualifiedOverrides = buildQualifiedNameOverrides(code, excludedRanges);
+  const allRanges = findExcludedRanges(code);
+  const stringRangesOnly = allRanges.filter(r => r.type === 'string');
+  const commentRangesOnly = allRanges.filter(r => r.type === 'comment');
+  const qualifiedOverrides = buildQualifiedNameOverrides(code, stringRangesOnly);
   const freq = {}; // canonical (uppercased) -> {original, count, firstIndex, category}
-  let m, skipped = 0;
+  let m;
   while ((m = regex.exec(code)) !== null) {
-    if (isInRanges(m.index, excludedRanges)) { skipped++; continue; }
     const token = m[0];
     const upper = token.toUpperCase();
     if (KEYWORDS.has(upper)) continue;
     if (/^\d+$/.test(token)) continue;
+    // String literals are never real identifiers — always skip.
+    if (isInRanges(m.index, stringRangesOnly)) continue;
+    const inComment = isInRanges(m.index, commentRangesOnly);
+    const override = qualifiedOverrides[token] || qualifiedOverrides[upper];
+    const guess = guessCategory(code, m.index, token);
+    const category = override || guess.category;
+    const contextual = !!override || guess.contextual;
+    // Inside a comment: only keep it if something specific (FROM/JOIN/AS/etc.)
+    // actually identified it as SQL — otherwise it's just prose, skip it.
+    if (inComment && !contextual) continue;
     if (!freq[upper]) {
-      const category = qualifiedOverrides[token] || qualifiedOverrides[upper] || guessCategory(code, m.index, token);
       freq[upper] = { original: token, count: 0, firstIndex: m.index, category };
     }
     freq[upper].count++;
   }
+  // String literal VALUES are their own thing — not identifiers, but still
+  // potentially sensitive data (a real status code, a real proper noun, etc).
+  // Each distinct quoted literal (exact text, case-sensitive — data values
+  // aren't case-merged like identifiers are) becomes its own "Text" candidate,
+  // keeping the surrounding quotes so the SQL stays valid after replacement.
+  const literalFreq = {}; // raw span text incl. quotes -> count
+  stringRangesOnly.forEach(r => {
+    const raw = code.slice(r.start, r.end);
+    if (raw === "''") return; // empty string literal, nothing to anonymize
+    if (!literalFreq[raw]) literalFreq[raw] = 0;
+    literalFreq[raw]++;
+  });
   candidates = candidates.filter(c => c.mode === 'substring'); // keep manual entries
   let idCounter = candidates.length;
   const counters = {};
@@ -386,8 +421,21 @@ function scanCode() {
       mode: 'word'
     });
   });
+  let textCounter = 0;
+  Object.keys(literalFreq).sort((a,b) => literalFreq[b] - literalFreq[a]).forEach(raw => {
+    textCounter++;
+    candidates.push({
+      id: idCounter++,
+      original: raw,
+      occurrences: literalFreq[raw],
+      category: 'Text',
+      generic: "'Text_" + textCounter + "'",
+      selected: true,
+      mode: 'literal'
+    });
+  });
   document.getElementById('scanNote').textContent =
-    `Found ${Object.keys(freq).length} candidate identifier(s) (case-insensitive matches merged, comments and string literals ignored).`;
+    `Found ${Object.keys(freq).length} identifier(s) and ${Object.keys(literalFreq).length} distinct string literal value(s). Commented-out SQL is scanned too when it has a clear pattern (FROM/JOIN/AS/etc.).`;
   document.getElementById('candidatesPanel').style.display = 'block';
   renderCandidates();
 }
@@ -400,10 +448,10 @@ function renderCandidates() {
     tr.innerHTML = `
       <td><input type="checkbox" ${c.selected ? 'checked':''} onchange="updateCand(${c.id},'selected',this.checked)"></td>
       <td>${escapeHtml(c.original)}</td>
-      <td>${c.mode === 'word' ? c.occurrences : '(text)'}</td>
+      <td>${c.mode !== 'substring' ? c.occurrences : '(manual)'}</td>
       <td>
         <select onchange="updateCand(${c.id},'category',this.value)">
-          ${["Table","Column","Alias","Variable","Schema","Database","Procedure","Custom","Other"].map(cat =>
+          ${["Table","Column","Alias","Variable","Schema","Database","Procedure","Text","Custom","Other"].map(cat =>
             `<option value="${cat}" ${c.category===cat?'selected':''}>${cat}</option>`).join('')}
         </select>
       </td>
@@ -451,26 +499,42 @@ function escapeHtml(s) {
   return s.replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 }
 
-// Single left-to-right pass over the ORIGINAL code: copies text through unchanged
-// except where a selected word-mode candidate matches, and never touches anything
-// inside a comment or string-literal span. Doing this as one pass (rather than one
-// regex.replace per candidate) avoids offset drift and avoids one candidate's
-// generic name accidentally colliding with another candidate's original text.
-function applyWordReplacements(code, wordCandidates, excludedRanges) {
-  const map = {};
-  wordCandidates.forEach(c => { map[c.original.toUpperCase()] = c.generic; });
-  const regex = /\b[A-Za-z_][A-Za-z0-9_]*\b/g;
-  let result = '', lastIndex = 0, m;
-  while ((m = regex.exec(code)) !== null) {
-    const idx = m.index;
-    if (isInRanges(idx, excludedRanges)) continue;
-    const upper = m[0].toUpperCase();
-    if (Object.prototype.hasOwnProperty.call(map, upper)) {
-      result += code.slice(lastIndex, idx) + map[upper];
-      lastIndex = idx + m[0].length;
+// Single left-to-right pass over the ORIGINAL code that handles both identifier
+// replacement and string-literal replacement together, so there's one
+// consistent, deterministic pass instead of layered regex.replace calls that
+// could drift or collide. Walks character by character: when it reaches the
+// exact start of a string-literal range, it either swaps the whole quoted
+// span (quotes included) for its generic 'Text_N' or copies it through
+// untouched; otherwise it reads identifier-shaped runs of characters and
+// looks them up in the word map (case-insensitive); everything else,
+// including comment markers and punctuation, is copied through as-is.
+function applyReplacements(code, wordMap, textLiteralMap, stringRanges) {
+  let result = '', i = 0, rangeIdx = 0;
+  const n = code.length;
+  const isWordChar = ch => /[A-Za-z0-9_]/.test(ch);
+  const isWordStart = ch => /[A-Za-z_]/.test(ch);
+  while (i < n) {
+    if (rangeIdx < stringRanges.length && stringRanges[rangeIdx].start === i) {
+      const r = stringRanges[rangeIdx];
+      const raw = code.slice(r.start, r.end);
+      result += Object.prototype.hasOwnProperty.call(textLiteralMap, raw) ? textLiteralMap[raw] : raw;
+      i = r.end;
+      rangeIdx++;
+      continue;
+    }
+    const ch = code[i];
+    if (isWordStart(ch)) {
+      let j = i + 1;
+      while (j < n && isWordChar(code[j])) j++;
+      const token = code.slice(i, j);
+      const upper = token.toUpperCase();
+      result += Object.prototype.hasOwnProperty.call(wordMap, upper) ? wordMap[upper] : token;
+      i = j;
+    } else {
+      result += ch;
+      i++;
     }
   }
-  result += code.slice(lastIndex);
   return result;
 }
 
@@ -478,9 +542,14 @@ function generateAnonymized() {
   const code = document.getElementById('inputCode').value;
   const selected = candidates.filter(c => c.selected);
   const wordCandidates = selected.filter(c => c.mode === 'word');
+  const literalCandidates = selected.filter(c => c.mode === 'literal');
   const substringCandidates = selected.filter(c => c.mode === 'substring').sort((a,b) => b.original.length - a.original.length);
-  const excludedRanges = findExcludedRanges(code);
-  let result = applyWordReplacements(code, wordCandidates, excludedRanges);
+  const wordMap = {};
+  wordCandidates.forEach(c => { wordMap[c.original.toUpperCase()] = c.generic; });
+  const textLiteralMap = {};
+  literalCandidates.forEach(c => { textLiteralMap[c.original] = c.generic; });
+  const stringRangesOnly = findExcludedRanges(code).filter(r => r.type === 'string');
+  let result = applyReplacements(code, wordMap, textLiteralMap, stringRangesOnly);
   substringCandidates.forEach(c => {
     result = result.split(c.original).join(c.generic);
   });
