@@ -1,0 +1,304 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Overlap Grid Checker</title>
+<style>
+  :root{
+    --bg:#f7f7f5; --card:#ffffff; --ink:#1f1f1d; --sub:#6b6b64;
+    --accent:#b5651d; --accent2:#8a4a12; --line:#e4e2dc; --mono-bg:#1f1f1d; --mono-ink:#eae7df;
+    --red:#c0392b; --orange:#d68910; --green:#1e8449;
+  }
+  @media (prefers-color-scheme: dark){
+    :root:not([data-theme="light"]){
+      --bg:#161614; --card:#201f1c; --ink:#f0eee8; --sub:#a8a49a;
+      --accent:#e0995a; --accent2:#f2b385; --line:#3a3834; --mono-bg:#0d0d0c; --mono-ink:#e6e2d8;
+    }
+  }
+  :root[data-theme="dark"]{
+    --bg:#161614; --card:#201f1c; --ink:#f0eee8; --sub:#a8a49a;
+    --accent:#e0995a; --accent2:#f2b385; --line:#3a3834; --mono-bg:#0d0d0c; --mono-ink:#e6e2d8;
+  }
+  *{box-sizing:border-box;}
+  html{scroll-padding-top:env(safe-area-inset-top,0px);}
+  body{
+    margin:0; background:var(--bg); color:var(--ink);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+    padding:env(safe-area-inset-top,0px) 0 env(safe-area-inset-bottom,0px) 0;
+  }
+  .wrap{max-width:1050px;margin:0 auto;padding:32px 20px 60px;}
+  h1{font-size:1.5rem;margin:0 0 4px;letter-spacing:-0.01em;}
+  .lede{color:var(--sub);font-size:0.92rem;margin:0 0 24px;}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:20px;margin-bottom:18px;}
+  label{display:block;font-size:0.82rem;font-weight:600;color:var(--sub);margin-bottom:6px;text-transform:uppercase;letter-spacing:0.03em;}
+  textarea,input[type=text],input[type=number],select{
+    width:100%;background:var(--bg);color:var(--ink);border:1px solid var(--line);
+    border-radius:8px;padding:10px 12px;font-size:0.95rem;font-family:inherit;
+  }
+  textarea{min-height:150px;resize:vertical;font-family:ui-monospace,Menlo,monospace;font-size:0.85rem;}
+  .row{display:flex;gap:14px;flex-wrap:wrap;margin-top:14px;}
+  .row > div{flex:1 1 160px;}
+  button{
+    background:var(--accent);color:#fff;border:none;border-radius:8px;
+    padding:12px 20px;font-size:0.95rem;font-weight:600;cursor:pointer;margin-top:18px;
+  }
+  button:hover{background:var(--accent2);}
+  .stats{display:flex;flex-wrap:wrap;gap:24px;margin-bottom:14px;}
+  .stat{font-size:0.85rem;color:var(--sub);}
+  .stat b{color:var(--ink);font-size:1.05rem;display:block;}
+  .gridwrap{overflow-x:auto;}
+  table.grid{border-collapse:collapse;font-size:0.82rem;white-space:nowrap;}
+  table.grid th,table.grid td{border:1px solid var(--line);padding:6px 10px;text-align:center;}
+  table.grid th{background:var(--card);color:var(--sub);font-weight:600;}
+  table.grid th.rowhead{text-align:left;color:var(--ink);}
+  .legend{display:flex;gap:18px;flex-wrap:wrap;margin-top:14px;font-size:0.82rem;color:var(--sub);}
+  .swatch{display:inline-block;width:12px;height:12px;border-radius:3px;margin-right:6px;vertical-align:middle;}
+  table.problems{width:100%;border-collapse:collapse;margin-top:6px;font-size:0.88rem;}
+  table.problems th,table.problems td{text-align:left;padding:8px 10px;border-bottom:1px solid var(--line);}
+  table.problems th{color:var(--sub);font-weight:600;font-size:0.78rem;text-transform:uppercase;}
+  .muted{color:var(--sub);font-size:0.85rem;margin-top:8px;}
+  .err{color:#c0392b;font-size:0.88rem;margin-top:10px;}
+  .facets{display:flex;flex-wrap:wrap;gap:12px;margin-bottom:16px;}
+  .facets > div{flex:1 1 150px;}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Overlap Grid Checker</h1>
+  <p class="lede">Paste a count table for two or more variables (e.g. straight from <code>GROUP BY var1, var2, var3</code>) and find which combinations have little or no data.</p>
+
+  <div class="card">
+    <label for="data">Paste data with a header row — last column is the count, any number of variable columns before it</label>
+    <textarea id="data" placeholder="segment,treatment,age_group,count
+Active,Postcard,18-25,120
+...">segment,treatment,age_group,count
+Active,Postcard,18-25,120
+Active,Postcard,26-40,310
+Active,Postcard,41+,90
+Active,Email,18-25,340
+Active,Email,26-40,280
+Active,Email,41+,15
+Lapsed,Postcard,18-25,60
+Lapsed,Postcard,26-40,410
+Lapsed,Postcard,41+,520
+Lapsed,Email,18-25,0
+Lapsed,Email,26-40,45
+Lapsed,Email,41+,30
+New,Postcard,18-25,900
+New,Postcard,26-40,150
+New,Email,18-25,700
+New,Email,26-40,80</textarea>
+
+    <div class="row">
+      <div>
+        <label for="threshold">Flag cells at/below this count</label>
+        <input type="number" id="threshold" value="100" min="0">
+      </div>
+    </div>
+
+    <button onclick="parseAndRun()">Analyze</button>
+    <div id="error" class="err"></div>
+  </div>
+
+  <div class="card" id="results" style="display:none;">
+    <div class="stats" id="stats"></div>
+
+    <div id="facetControls" class="facets"></div>
+    <div class="gridwrap"><table class="grid" id="gridtable"></table></div>
+    <div class="legend">
+      <span><span class="swatch" style="background:var(--red);"></span>0 — no overlap</span>
+      <span><span class="swatch" style="background:var(--orange);"></span>below threshold</span>
+      <span><span class="swatch" style="background:var(--green);"></span>at/above threshold, shade = relative size</span>
+    </div>
+    <p class="muted" id="gridnote"></p>
+  </div>
+
+  <div class="card" id="problemcard" style="display:none;">
+    <label>Sparsest combinations across every variable (all combos, not just the grid slice above)</label>
+    <table class="problems" id="problemtable"></table>
+    <p class="muted" id="problemnote"></p>
+  </div>
+</div>
+
+<script>
+const CAP = 20000; // max cartesian combinations to fully enumerate
+let state = null;
+
+function tryNumericSort(values){
+  const allNum = values.every(v => v!=='' && !isNaN(parseFloat(v)) && isFinite(v));
+  return allNum ? values.sort((a,b)=>parseFloat(a)-parseFloat(b)) : values.sort();
+}
+function cartesian(arrays){
+  return arrays.reduce((acc, arr) => {
+    const out = [];
+    acc.forEach(prefix => arr.forEach(v => out.push([...prefix, v])));
+    return out;
+  }, [[]]);
+}
+
+function parseAndRun(){
+  document.getElementById('error').textContent='';
+  const raw = document.getElementById('data').value;
+  const lines = raw.split('\n').map(l=>l.trim()).filter(Boolean);
+  if(lines.length < 2){
+    document.getElementById('error').textContent = 'Need a header row plus at least one data row.';
+    return;
+  }
+  const header = lines[0].split(',').map(s=>s.trim());
+  if(header.length < 3){
+    document.getElementById('error').textContent = 'Need at least 2 variable columns plus a count column.';
+    return;
+  }
+  const varNames = header.slice(0, -1);
+  const rows = [];
+  for(let i=1;i<lines.length;i++){
+    const cols = lines[i].split(',').map(s=>s.trim());
+    if(cols.length !== header.length) continue;
+    const count = parseFloat(cols[cols.length-1]);
+    if(isNaN(count)) continue;
+    rows.push({ values: cols.slice(0,-1), count });
+  }
+  if(rows.length < 2){
+    document.getElementById('error').textContent = 'Could not parse enough valid data rows — check the column count matches the header.';
+    return;
+  }
+
+  const uniqueVals = varNames.map((_, i) => tryNumericSort([...new Set(rows.map(r=>r.values[i]))]));
+  const map = {};
+  rows.forEach(r => { const k = r.values.join('|||'); map[k] = (map[k]||0) + r.count; });
+
+  const threshold = parseFloat(document.getElementById('threshold').value) || 0;
+  state = { varNames, uniqueVals, map, threshold, rowVar: 0, colVar: 1, fixed: varNames.map(()=> 'ALL') };
+
+  buildGlobalProblems();
+  buildFacetControls();
+  renderGrid();
+  document.getElementById('results').style.display = 'block';
+}
+
+function buildGlobalProblems(){
+  const { varNames, uniqueVals, map, threshold } = state;
+  const total = uniqueVals.reduce((p,a)=>p*a.length, 1);
+  let combos, truncated = false;
+  if(total <= CAP){
+    combos = cartesian(uniqueVals);
+  } else {
+    // too many to fully enumerate — fall back to only combinations actually observed in the data
+    combos = Object.keys(map).map(k => k.split('|||'));
+    truncated = true;
+  }
+  const problems = combos.map(vals => ({ vals, count: map[vals.join('|||')] || 0 }))
+    .filter(c => c.count <= threshold)
+    .sort((a,b)=>a.count-b.count);
+
+  const totalCells = total;
+  const emptyCells = combos.filter(vals => (map[vals.join('|||')]||0) === 0).length;
+
+  document.getElementById('stats').innerHTML = `
+    <div class="stat"><b>${varNames.length}</b>variables</div>
+    <div class="stat"><b>${totalCells.toLocaleString()}</b>possible combinations</div>
+    <div class="stat"><b>${emptyCells.toLocaleString()}</b>with zero data${truncated ? '*' : ''}</div>
+    <div class="stat"><b>${problems.length.toLocaleString()}</b>at/below threshold${truncated ? '*' : ''}</div>
+  `;
+
+  const showRows = problems.slice(0, 200);
+  if(showRows.length){
+    let h = `<tr>${varNames.map(v=>`<th>${v}</th>`).join('')}<th>Count</th><th>Status</th></tr>`;
+    showRows.forEach(p=>{
+      const status = p.count===0 ? 'No overlap' : 'Below threshold';
+      h += `<tr>${p.vals.map(v=>`<td>${v}</td>`).join('')}<td>${p.count.toLocaleString()}</td><td>${status}</td></tr>`;
+    });
+    document.getElementById('problemtable').innerHTML = h;
+    document.getElementById('problemcard').style.display = 'block';
+    document.getElementById('problemnote').textContent =
+      (truncated ? '* Too many possible combinations to fully enumerate — this list covers only combinations that appear at least once in your pasted data; unobserved combinations beyond that are not counted here. ' : '') +
+      (problems.length > 200 ? `Showing the 200 sparsest of ${problems.length.toLocaleString()}.` : '');
+  } else {
+    document.getElementById('problemcard').style.display = 'none';
+  }
+}
+
+function buildFacetControls(){
+  const { varNames, uniqueVals } = state;
+  let html = '';
+  html += `<div><label>Grid rows</label><select id="rowVarSel" onchange="onAxisChange('row')">${varNames.map((v,i)=>`<option value="${i}">${v}</option>`).join('')}</select></div>`;
+  html += `<div><label>Grid columns</label><select id="colVarSel" onchange="onAxisChange('col')">${varNames.map((v,i)=>`<option value="${i}">${v}</option>`).join('')}</select></div>`;
+  document.getElementById('rowVarSel') // placeholder to keep order; actual insert below
+  document.getElementById('facetControls').innerHTML = html + varNames.map((v,i)=>{
+    if(i===state.rowVar || i===state.colVar) return '';
+    const opts = ['ALL', ...uniqueVals[i]].map(val=>`<option value="${val}">${val==='ALL'?'All (sum)':val}</option>`).join('');
+    return `<div><label>${v}</label><select data-facet-idx="${i}" onchange="onFacetChange(${i}, this.value)">${opts}</select></div>`;
+  }).join('');
+  document.getElementById('rowVarSel').value = state.rowVar;
+  document.getElementById('colVarSel').value = state.colVar;
+}
+function onAxisChange(which){
+  const rowSel = parseInt(document.getElementById('rowVarSel').value);
+  const colSel = parseInt(document.getElementById('colVarSel').value);
+  state.rowVar = rowSel;
+  state.colVar = colSel === rowSel ? state.varNames.findIndex((_,i)=>i!==rowSel) : colSel;
+  state.fixed = state.varNames.map(()=> 'ALL');
+  buildFacetControls();
+  renderGrid();
+}
+function onFacetChange(idx, val){
+  state.fixed[idx] = val;
+  renderGrid();
+}
+
+function renderGrid(){
+  const { varNames, uniqueVals, map, threshold, rowVar, colVar, fixed } = state;
+  const rowVals = uniqueVals[rowVar];
+  const colVals = uniqueVals[colVar];
+
+  function cellCount(rv, cv){
+    // sum over any variable fixed to ALL, matching fixed values otherwise
+    const otherIdx = varNames.map((_,i)=>i).filter(i => i!==rowVar && i!==colVar);
+    let total = 0;
+    function recurse(i, current){
+      if(i === otherIdx.length){
+        const key = varNames.map((_,vi)=>{
+          if(vi===rowVar) return rv;
+          if(vi===colVar) return cv;
+          return current[vi];
+        }).join('|||');
+        total += map[key] || 0;
+        return;
+      }
+      const vi = otherIdx[i];
+      if(fixed[vi] === 'ALL'){
+        uniqueVals[vi].forEach(v => recurse(i+1, {...current, [vi]: v}));
+      } else {
+        recurse(i+1, {...current, [vi]: fixed[vi]});
+      }
+    }
+    recurse(0, {});
+    return total;
+  }
+
+  const matrix = rowVals.map(rv => colVals.map(cv => cellCount(rv, cv)));
+  const maxCount = Math.max(...matrix.flat(), 1);
+
+  let h = `<tr><th class="rowhead">${varNames[rowVar]} \\ ${varNames[colVar]}</th>${colVals.map(cv=>`<th>${cv}</th>`).join('')}</tr>`;
+  rowVals.forEach((rv,ri)=>{
+    h += `<tr><th class="rowhead">${rv}</th>`;
+    colVals.forEach((cv,ci)=>{
+      const c = matrix[ri][ci];
+      let bg;
+      if(c===0) bg='var(--red)';
+      else if(c<=threshold) bg='var(--orange)';
+      else { const a=0.25+0.65*(c/maxCount); bg=`rgba(30,132,73,${a.toFixed(2)})`; }
+      const tc = (c===0 || c<=threshold || c/maxCount>0.35) ? '#fff':'inherit';
+      h += `<td style="background:${bg};color:${tc};">${c.toLocaleString()}</td>`;
+    });
+    h += `</tr>`;
+  });
+  document.getElementById('gridtable').innerHTML = h;
+
+  const fixedDesc = varNames.map((v,i)=> (i!==rowVar && i!==colVar) ? `${v}=${fixed[i]==='ALL'?'All (summed)':fixed[i]}` : null).filter(Boolean).join(', ');
+  document.getElementById('gridnote').textContent = fixedDesc ? `Slice held at: ${fixedDesc}` : '';
+}
+</script>
+</body>
+</html>

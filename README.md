@@ -8,6 +8,7 @@ Small browser-based tools for data analysts — no backend, no installs, runs en
 |---|---|
 | [snowflake-code-anonymizer](./snowflake-code-anonymizer) | Scans Snowflake SQL for table, schema, database, column, and variable names and swaps them for generic placeholders (`Table_1`, `Variable_2`, etc.) before you paste code into an AI tool. Generates a dictionary so you can restore the real names in the AI's output afterward. |
 | [quantile-bucket-builder](./quantile-bucket-builder) | Turns a numeric variable — raw values or a `value, count` table from a `GROUP BY` — into population-balanced buckets, with sentinel/outlier handling and a generated SQL `CASE WHEN` to reproduce them. |
+| [overlap-grid-checker](./overlap-grid-checker) | Takes a multi-variable count table and flags which combinations have little or no data, via a full cross-product combination list plus a 2D heatmap slice for any pair of variables. |
 
 More tools will be added here over time — each lives in its own folder with a short README.
 
