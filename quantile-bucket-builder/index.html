@@ -203,9 +203,28 @@ function toLetter(n){ // 0-indexed -> A, B, ... Z, AA, AB, ...
   return s;
 }
 
+// Detects a header row (e.g. "age,count" pasted straight from a GROUP BY)
+// and strips it out, returning the variable name it found (if any).
+function stripHeader(raw, isPairs){
+  const lines = raw.split('\n');
+  let idx = 0;
+  while(idx < lines.length && lines[idx].trim()==='') idx++;
+  if(idx >= lines.length) return { varName:null, rest:raw };
+  const parts = lines[idx].trim().split(/[\s,]+/).filter(Boolean);
+  let isHeaderRow = false, varName = null;
+  if(isPairs && parts.length >= 2){
+    if(isNaN(parseFloat(parts[0])) || isNaN(parseFloat(parts[1]))){
+      isHeaderRow = true; varName = parts[0];
+    }
+  } else if(!isPairs && parts.length >= 1){
+    if(isNaN(parseFloat(parts[0]))){ isHeaderRow = true; varName = parts[0]; }
+  }
+  if(!isHeaderRow) return { varName:null, rest:raw };
+  return { varName, rest: lines.slice(0,idx).concat(lines.slice(idx+1)).join('\n') };
+}
+
 function run(){
   document.getElementById('error').textContent='';
-  const varname = document.getElementById('varname').value.trim() || 'x';
   const raw = document.getElementById('data').value;
   const isPairs = document.getElementById('modePairs').checked;
   const pct = parseFloat(document.getElementById('pct').value) || 20;
@@ -215,7 +234,13 @@ function run(){
   const sentinelList = document.getElementById('sentinels').value
     .split(',').map(s=>parseFloat(s.trim())).filter(v=>!isNaN(v));
 
-  const fullDist = parseToDistribution(raw, isPairs);
+  const headerInfo = stripHeader(raw, isPairs);
+  if(headerInfo.varName){
+    document.getElementById('varname').value = headerInfo.varName;
+  }
+  const varname = document.getElementById('varname').value.trim() || 'x';
+
+  const fullDist = parseToDistribution(headerInfo.rest, isPairs);
   if(fullDist.values.length < 2 || fullDist.total < 5){
     document.getElementById('error').textContent = 'Need at least a couple of distinct values with counts.';
     return;
@@ -244,10 +269,13 @@ function run(){
   for(let i=1;i<nBuckets;i++){
     edges.push(weightedPercentile(dist, (i*100)/nBuckets));
   }
-  edges = edges.map(e => roundTo(e, roundStep));
-  edges = [...new Set(edges)].sort((a,b)=>a-b);
-
   const min = dist.values[0], max = dist.values[dist.values.length-1];
+  edges = edges.map(e => roundTo(e, roundStep));
+  // drop any rounded edge that lands at or outside the true data range —
+  // otherwise it creates a phantom empty bucket (e.g. an edge rounding
+  // down to 0 when the real minimum is 1)
+  const droppedEdges = edges.filter(e => e <= min || e >= max).length;
+  edges = [...new Set(edges.filter(e => e > min && e < max))].sort((a,b)=>a-b);
   const boundaries = [min, ...edges, max];
 
   const minIsRound = isRoundBoundary(min, roundStep);
@@ -282,8 +310,10 @@ function run(){
   document.getElementById('results').style.display = 'block';
 
   let note = [];
+  if(headerInfo.varName) note.push(`detected header row — variable name set to "${headerInfo.varName}"`);
   if(minIsRound && openBottom) note.push(`min (${min}) looks like a clean boundary — used as a fixed edge instead of "under"`);
   if(maxIsRound && openTop) note.push(`max (${max}) looks like a clean boundary — used as a fixed edge instead of "+"`);
+  if(droppedEdges > 0) note.push(`${droppedEdges} rounded edge(s) landed outside the actual data range and were dropped to avoid an empty bucket — try a smaller rounding step for finer control`);
   document.getElementById('note').textContent = note.join(' · ');
 
   let sql = `CASE\n`;
