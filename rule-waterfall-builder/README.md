@@ -13,7 +13,7 @@ Records flow through Stage 1, then Stage 2, then Stage 3, and so on.
 - Records that clear every stage are the final **Passed** bar.
 - A record dropped at an earlier stage is **not counted again** at later stages, even if the data shows a rule for it there.
 
-The same rule can exist in more than one stage (for example "Credit Score Too Low" at Stage 1 and Stage 2). It keeps the same colour everywhere so you can follow it across the journey.
+The same rule can exist in more than one stage (for example "Rule A" at Stage 1 and Stage 2). It keeps the same colour everywhere so you can follow it across the journey.
 
 ## Usage
 
@@ -31,12 +31,12 @@ The format is detected automatically.
 
 ### 1. Pivot export (e.g. Google Sheets)
 
-One column per stage, then a count column as the last column. Subtotal rows and `(null)` cells are fine. Only the fully broken-down rows are used, so nothing is double counted.
+One column per stage, then a count column as the last column. Quoted exports (every cell in `"..."`, empty cells as `""`) and header names such as `PLACEHOLDER_01` are handled. Stages with placeholder or missing names become Stage 1, Stage 2, and so on, and you can rename them in the app. Subtotal rows and `(null)` cells are fine. Only the fully broken-down rows are used, so nothing is double counted.
 
 | Stage 1 | Stage 2 | Stage 3 | Count |
 |---|---|---|---|
-| Credit Score Too Low | | | 1,101 |
-| | Credit Score Too Low | | 306 |
+| Rule A | | | 1,101 |
+| | Rule A | | 306 |
 | | | (null) | 306 |
 | | (null) | | 717 |
 | | | (null) | 717 |

@@ -22,7 +22,7 @@ button.p{background:var(--acc);color:#fff;border-color:var(--acc)}
 button:focus-visible,select:focus-visible,input:focus-visible{outline:2px solid var(--acc);outline-offset:2px}
 .row{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-top:10px}
 .chips label{border:1px solid var(--line);border-radius:999px;padding:3px 12px;cursor:pointer;background:var(--bg)}
-.chips input{margin-right:6px}
+.chips input{margin-right:6px}.chips .nm{border:0;border-bottom:1px dashed var(--mute);background:transparent;color:var(--ink);font:inherit;padding:0 2px;border-radius:0}
 .hint{color:var(--mute);font-size:13px}
 .scroll{overflow-x:auto}
 table{border-collapse:collapse;width:100%;font-size:13px;min-width:560px}
@@ -42,7 +42,7 @@ svg text{font-family:inherit}
 
 <section>
 <h2>1. Load data</h2>
-<p class="hint">Paste or upload either a <b>pivot export</b> (one column per stage: Sup 1, Sup 2, …, then a count column; subtotal rows and (null) cells are fine) or <b>one row per record</b> with a column per stage holding the rule(s) that fired, separated by <b>|</b> or <b>;</b>. Blank or (null) = no rule fired.</p>
+<p class="hint">Paste or upload either a <b>pivot export</b> (one column per stage: Stage 1, Stage 2, …, then a count column; subtotal rows and (null) cells are fine) or <b>one row per record</b> with a column per stage holding the rule(s) that fired, separated by <b>|</b> or <b>;</b>. Blank or (null) = no rule fired.</p>
 <textarea id="txt" placeholder="Paste from Google Sheets or CSV here"></textarea>
 <div class="row">
 <button class="p" id="go">Build waterfall</button>
@@ -53,7 +53,7 @@ svg text{font-family:inherit}
 </section>
 
 <section id="cfg" hidden>
-<h2>2. Stages (in file order)</h2>
+<h2>2. Stages (in file order; click a name to rename)</h2>
 <div class="row chips" id="chips"></div>
 <div class="row">
 <label>When rules overlap, credit the drop to
@@ -83,7 +83,7 @@ const PAL=['#e07a5f','#3d8fb5','#e3b23c','#7b6bb0','#4aa57b','#c8547a','#8d9a3a'
 let rows=[],head=[],colorMap=new Map();
 const col=k=>{if(!colorMap.has(k))colorMap.set(k,PAL[colorMap.size%PAL.length]);return colorMap.get(k)};
 
-function parseCSV(t){
+function parseCSV(t){t=t.replace(/^\uFEFF/,"");
   const first=t.split('\n')[0];const d=first.includes('\t')?'\t':',';
   const R=[];let r=[],c='',q=false;
   for(let i=0;i<t.length;i++){const ch=t[i];
@@ -96,7 +96,7 @@ function parseCSV(t){
   return R.filter(x=>x.some(y=>y.trim()));
 }
 
-let W=[];
+let W=[],full='',shown=null,dirty=false;
 const NUL=/^(\(?null\)?|nan|none|na|n\/a|-)$/i;
 const isNum=v=>/^\s*[\d,]+(\.\d+)?\s*$/.test(v||'');
 function load(text){
@@ -111,7 +111,7 @@ function load(text){
   colorMap=new Map();W=[];rows=[];
   if(pivot){
     const nS=R[0].length-1;
-    head=Array.from({length:nS},(_,i)=>hasHdr&&R[0][i].trim()?R[0][i].trim():'Sup '+(i+1));
+    head=Array.from({length:nS},(_,i)=>hasHdr&&R[0][i].trim()&&!/^placeholder/i.test(R[0][i].trim())?R[0][i].trim():'Stage '+(i+1));
     const cur=Array(nS).fill('');
     for(const r of body){
       let k=-1;for(let j=0;j<nS;j++)if((r[j]||'').trim())k=j;
@@ -125,13 +125,13 @@ function load(text){
     head=R[0].map(h=>h.trim());rows=R.slice(1);
   }
   const chips=$('#chips');chips.innerHTML='';
-  const guess=head.map((h,i)=>/sup/i.test(h)?i:-1).filter(i=>i>=0);
+  const guess=head.map((h,i)=>/sup|stage/i.test(h)?i:-1).filter(i=>i>=0);
   const useAll=pivot||!guess.length;
   head.forEach((h,i)=>{
     const l=document.createElement('label');
-    l.innerHTML=`<input type="checkbox" class="stg" value="${i}" ${(pivot||guess.includes(i))?'checked':''}>${esc(h||'col '+(i+1))}`;
+    l.innerHTML=`<input type="checkbox" class="stg" value="${i}" ${(pivot||guess.includes(i))?'checked':''}><input type="text" class="nm" data-i="${i}" value="${esc(h||'col '+(i+1))}" aria-label="Stage name" size="14">`;
     chips.appendChild(l)});
-  chips.querySelectorAll('input').forEach(e=>e.onchange=render);
+  chips.querySelectorAll('input').forEach(e=>e.oninput=render);
   $('#cfg').hidden=false;render();
 }
 
@@ -158,7 +158,7 @@ function compute(){
       else if(mode=='split')s.forEach(r=>seg[r]=(seg[r]||0)+w/s.length);
       else{const k=s.join(' + ');seg[k]=(seg[k]||0)+w}});
     const segs=Object.entries(seg).sort((a,b)=>b[1]-a[1]);
-    out.push({name:head[ci]||'col '+(ci+1),start:startW,drop:dropW,end:passW,segs,hits,uniq,order,mode});
+    out.push({name:(document.querySelector('.nm[data-i="'+ci+'"]')||{}).value||head[ci]||'col '+(ci+1),start:startW,drop:dropW,end:passW,segs,hits,uniq,order,mode});
     alive=pass;startW=passW}
   return {out,total};
 }
@@ -215,17 +215,18 @@ function demo(){
   const S=[['DNC',.06],['Opt-out',.05],['Recent contact',.12],['Bad email',.04]],
         T=[['Low score',.18],['Over-frequency',.09],['Opt-out',.03],['Region excl',.05]],
         U=[['Model hold',.07],['DNC',.02],['Budget cap',.04]];
-  let c='id,Sup 1,Sup 2,Sup 3\n';
+  let c='id,Stage 1,Stage 2,Stage 3\n';
   for(let i=1;i<=10000;i++){
     const f=L=>L.filter(([,p])=>Math.random()<p).map(x=>x[0]).join('|');
     c+=`${i},${f(S)},${f(T)},${f(U)}\n`}
-  $('#txt').value=c.split('\n').slice(0,40).join('\n')+'\n… (10,000 rows loaded)';
-  load(c);
+  shown=c.split('\n').slice(0,40).join('\n')+'\n… (preview only; all 10,000 rows are loaded)';full=c;dirty=false;
+  $('#txt').value=shown;load(c);
 }
-$('#go').onclick=()=>load($('#txt').value);
+$('#txt').oninput=()=>{dirty=true};
+$('#go').onclick=()=>{const v=$('#txt').value;load(full&&!dirty?full:v)};
 $('#demo').onclick=demo;
 $('#mode').onchange=render;
-$('#file').onchange=e=>{const f=e.target.files[0];if(!f)return;const r=new FileReader();r.onload=()=>{$('#txt').value=String(r.result).slice(0,3000);load(String(r.result))};r.readAsText(f)};
+$('#file').onchange=e=>{const f=e.target.files[0];if(!f)return;const r=new FileReader();r.onload=()=>{const t=String(r.result);full=t;dirty=false;shown=t.length>3000?t.slice(0,3000)+'\n… (preview only; the full file is loaded)':t;$('#txt').value=shown;load(t);e.target.value=''};r.readAsText(f)};
 </script>
 </body>
 </html>
