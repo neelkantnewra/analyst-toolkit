@@ -111,7 +111,7 @@ function load(text){
   colorMap=new Map();W=[];rows=[];
   if(pivot){
     const nS=R[0].length-1;
-    head=Array.from({length:nS},(_,i)=>hasHdr&&R[0][i].trim()&&!/^placeholder/i.test(R[0][i].trim())?R[0][i].trim():'Stage '+(i+1));
+    head=Array.from({length:nS},(_,i)=>hasHdr&&R[0][i].trim()?R[0][i].trim():'Stage '+(i+1));
     const cur=Array(nS).fill('');
     for(const r of body){
       let k=-1;for(let j=0;j<nS;j++)if((r[j]||'').trim())k=j;
