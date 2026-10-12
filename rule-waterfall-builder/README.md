@@ -31,7 +31,7 @@ The format is detected automatically.
 
 ### 1. Pivot export (e.g. Google Sheets)
 
-One column per stage, then a count column as the last column. Quoted exports (every cell in `"..."`, empty cells as `""`) and header names such as `PLACEHOLDER_01` are handled. Stages with placeholder or missing names become Stage 1, Stage 2, and so on, and you can rename them in the app. Subtotal rows and `(null)` cells are fine. Only the fully broken-down rows are used, so nothing is double counted.
+One column per stage, then a count column as the last column. Quoted exports (every cell in `"..."`, empty cells as `""`) are handled. The column headers are used directly as the stage names (a blank header becomes Stage 1, Stage 2, and so on), and you can still rename them in the app. Subtotal rows and `(null)` cells are fine. Only the fully broken-down rows are used, so nothing is double counted.
 
 | Stage 1 | Stage 2 | Stage 3 | Count |
 |---|---|---|---|
