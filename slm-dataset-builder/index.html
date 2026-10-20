@@ -1,0 +1,450 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>slm-dataset-builder</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400&display=swap" rel="stylesheet">
+<style>
+  body{background:#F8FAFC;color:#0F172A;font-family:Inter,system-ui,sans-serif}
+  .field{width:100%;border:1px solid #E2E8F0;background:#fff;border-radius:8px;padding:10px 12px;font-size:14px;line-height:1.6;color:#0F172A;resize:none;overflow:hidden;min-height:84px}
+  .field:focus,.sel:focus,.inp:focus{outline:none;border-color:#6366F1;box-shadow:0 0 0 3px rgba(99,102,241,.15)}
+  .sel,.inp{border:1px solid #E2E8F0;background:#fff;border-radius:8px;padding:6px 10px;font-size:13px;color:#334155}
+  .btn{border:1px solid #E2E8F0;background:#fff;color:#334155;border-radius:8px;padding:6px 12px;font-size:13px;font-weight:500;cursor:pointer;white-space:nowrap}
+  .btn:hover{background:#F1F5F9}
+  .btn-primary{background:#4F46E5;border-color:#4F46E5;color:#fff}
+  .btn-primary:hover{background:#4338CA}
+  .btn-danger{color:#B91C1C}
+  .lbl{font-size:13px;font-weight:500;color:#475569;margin-bottom:6px;display:block}
+  .pill{border:1px solid #E2E8F0;background:#fff;border-radius:999px;padding:3px 10px;font-size:12px;font-family:'JetBrains Mono',monospace;color:#475569;cursor:pointer}
+  .pill:hover{border-color:#6366F1;color:#4F46E5;background:#EEF2FF}
+  .cat{border:1px solid #E2E8F0;background:#fff;border-radius:999px;padding:4px 12px;font-size:13px;color:#475569;cursor:pointer}
+  .cat.on{background:#EEF2FF;border-color:#A5B4FC;color:#4338CA;font-weight:500}
+  .seg{display:inline-flex;background:#F1F5F9;border-radius:8px;padding:3px}
+  .seg button{padding:4px 14px;font-size:13px;border-radius:6px;color:#475569;font-weight:500}
+  .seg button.on{background:#fff;color:#0F172A;box-shadow:0 1px 2px rgba(15,23,42,.08)}
+  .item{display:block;width:100%;text-align:left;padding:10px 12px;border-radius:8px;border:1px solid transparent;cursor:pointer}
+  .item:hover{background:#F1F5F9}
+  .item.on{background:#fff;border-color:#E2E8F0;box-shadow:0 1px 2px rgba(15,23,42,.05)}
+  .badge{font-size:11px;padding:1px 8px;border-radius:999px;background:#F1F5F9;color:#475569;border:1px solid #E2E8F0}
+  .turn-role{font-size:12px;font-weight:500;padding:2px 10px;border-radius:999px;border:1px solid #E2E8F0;cursor:pointer;background:#fff}
+  .turn-role.user{color:#4338CA;background:#EEF2FF;border-color:#C7D2FE}
+  .turn-role.assistant{color:#047857;background:#ECFDF5;border-color:#A7F3D0}
+  .ic{color:#94A3B8;padding:2px 6px;border-radius:6px;font-size:13px;cursor:pointer}
+  .ic:hover{background:#F1F5F9;color:#334155}
+  .dot{width:8px;height:8px;border-radius:50%;background:#EF4444;flex:none}
+  kbd{font-family:'JetBrains Mono',monospace;font-size:11px;background:rgba(255,255,255,.2);border-radius:4px;padding:0 5px}
+  ::-webkit-scrollbar{width:8px}::-webkit-scrollbar-thumb{background:#CBD5E1;border-radius:8px}
+  @media(prefers-reduced-motion:no-preference){#toast{transition:opacity .2s}}
+</style>
+<style>/* Tailwind v3.4.17, pre-built for this file */
+*,:after,:before{--tw-border-spacing-x:0;--tw-border-spacing-y:0;--tw-translate-x:0;--tw-translate-y:0;--tw-rotate:0;--tw-skew-x:0;--tw-skew-y:0;--tw-scale-x:1;--tw-scale-y:1;--tw-pan-x: ;--tw-pan-y: ;--tw-pinch-zoom: ;--tw-scroll-snap-strictness:proximity;--tw-gradient-from-position: ;--tw-gradient-via-position: ;--tw-gradient-to-position: ;--tw-ordinal: ;--tw-slashed-zero: ;--tw-numeric-figure: ;--tw-numeric-spacing: ;--tw-numeric-fraction: ;--tw-ring-inset: ;--tw-ring-offset-width:0px;--tw-ring-offset-color:#fff;--tw-ring-color:rgba(59,130,246,.5);--tw-ring-offset-shadow:0 0 #0000;--tw-ring-shadow:0 0 #0000;--tw-shadow:0 0 #0000;--tw-shadow-colored:0 0 #0000;--tw-blur: ;--tw-brightness: ;--tw-contrast: ;--tw-grayscale: ;--tw-hue-rotate: ;--tw-invert: ;--tw-saturate: ;--tw-sepia: ;--tw-drop-shadow: ;--tw-backdrop-blur: ;--tw-backdrop-brightness: ;--tw-backdrop-contrast: ;--tw-backdrop-grayscale: ;--tw-backdrop-hue-rotate: ;--tw-backdrop-invert: ;--tw-backdrop-opacity: ;--tw-backdrop-saturate: ;--tw-backdrop-sepia: ;--tw-contain-size: ;--tw-contain-layout: ;--tw-contain-paint: ;--tw-contain-style: }::backdrop{--tw-border-spacing-x:0;--tw-border-spacing-y:0;--tw-translate-x:0;--tw-translate-y:0;--tw-rotate:0;--tw-skew-x:0;--tw-skew-y:0;--tw-scale-x:1;--tw-scale-y:1;--tw-pan-x: ;--tw-pan-y: ;--tw-pinch-zoom: ;--tw-scroll-snap-strictness:proximity;--tw-gradient-from-position: ;--tw-gradient-via-position: ;--tw-gradient-to-position: ;--tw-ordinal: ;--tw-slashed-zero: ;--tw-numeric-figure: ;--tw-numeric-spacing: ;--tw-numeric-fraction: ;--tw-ring-inset: ;--tw-ring-offset-width:0px;--tw-ring-offset-color:#fff;--tw-ring-color:rgba(59,130,246,.5);--tw-ring-offset-shadow:0 0 #0000;--tw-ring-shadow:0 0 #0000;--tw-shadow:0 0 #0000;--tw-shadow-colored:0 0 #0000;--tw-blur: ;--tw-brightness: ;--tw-contrast: ;--tw-grayscale: ;--tw-hue-rotate: ;--tw-invert: ;--tw-saturate: ;--tw-sepia: ;--tw-drop-shadow: ;--tw-backdrop-blur: ;--tw-backdrop-brightness: ;--tw-backdrop-contrast: ;--tw-backdrop-grayscale: ;--tw-backdrop-hue-rotate: ;--tw-backdrop-invert: ;--tw-backdrop-opacity: ;--tw-backdrop-saturate: ;--tw-backdrop-sepia: ;--tw-contain-size: ;--tw-contain-layout: ;--tw-contain-paint: ;--tw-contain-style: }/*! tailwindcss v3.4.17 | MIT License | https://tailwindcss.com*/*,:after,:before{box-sizing:border-box;border:0 solid #e5e7eb}:after,:before{--tw-content:""}:host,html{line-height:1.5;-webkit-text-size-adjust:100%;-moz-tab-size:4;-o-tab-size:4;tab-size:4;font-family:Inter,system-ui,sans-serif;font-feature-settings:normal;font-variation-settings:normal;-webkit-tap-highlight-color:transparent}body{margin:0;line-height:inherit}hr{height:0;color:inherit;border-top-width:1px}abbr:where([title]){-webkit-text-decoration:underline dotted;text-decoration:underline dotted}h1,h2,h3,h4,h5,h6{font-size:inherit;font-weight:inherit}a{color:inherit;text-decoration:inherit}b,strong{font-weight:bolder}code,kbd,pre,samp{font-family:JetBrains Mono,ui-monospace,monospace;font-feature-settings:normal;font-variation-settings:normal;font-size:1em}small{font-size:80%}sub,sup{font-size:75%;line-height:0;position:relative;vertical-align:baseline}sub{bottom:-.25em}sup{top:-.5em}table{text-indent:0;border-color:inherit;border-collapse:collapse}button,input,optgroup,select,textarea{font-family:inherit;font-feature-settings:inherit;font-variation-settings:inherit;font-size:100%;font-weight:inherit;line-height:inherit;letter-spacing:inherit;color:inherit;margin:0;padding:0}button,select{text-transform:none}button,input:where([type=button]),input:where([type=reset]),input:where([type=submit]){-webkit-appearance:button;background-color:transparent;background-image:none}:-moz-focusring{outline:auto}:-moz-ui-invalid{box-shadow:none}progress{vertical-align:baseline}::-webkit-inner-spin-button,::-webkit-outer-spin-button{height:auto}[type=search]{-webkit-appearance:textfield;outline-offset:-2px}::-webkit-search-decoration{-webkit-appearance:none}::-webkit-file-upload-button{-webkit-appearance:button;font:inherit}summary{display:list-item}blockquote,dd,dl,figure,h1,h2,h3,h4,h5,h6,hr,p,pre{margin:0}fieldset{margin:0}fieldset,legend{padding:0}menu,ol,ul{list-style:none;margin:0;padding:0}dialog{padding:0}textarea{resize:vertical}input::-moz-placeholder,textarea::-moz-placeholder{opacity:1;color:#9ca3af}input::placeholder,textarea::placeholder{opacity:1;color:#9ca3af}[role=button],button{cursor:pointer}:disabled{cursor:default}audio,canvas,embed,iframe,img,object,svg,video{display:block;vertical-align:middle}img,video{max-width:100%;height:auto}[hidden]:where(:not([hidden=until-found])){display:none}.pointer-events-none{pointer-events:none}.fixed{position:fixed}.bottom-20{bottom:5rem}.right-6{right:1.5rem}.mx-auto{margin-left:auto;margin-right:auto}.mb-1{margin-bottom:.25rem}.mb-2{margin-bottom:.5rem}.mr-2{margin-right:.5rem}.block{display:block}.flex{display:flex}.hidden{display:none}.h-14{height:3.5rem}.h-screen{height:100vh}.max-h-40{max-height:10rem}.min-h-0{min-height:0}.w-\[280px\]{width:280px}.w-full{width:100%}.min-w-0{min-width:0}.max-w-\[820px\]{max-width:820px}.flex-1{flex:1 1 0%}.flex-none{flex:none}.cursor-pointer{cursor:pointer}.select-none{-webkit-user-select:none;-moz-user-select:none;user-select:none}.flex-col{flex-direction:column}.flex-wrap{flex-wrap:wrap}.items-center{align-items:center}.gap-1{gap:.25rem}.gap-1\.5{gap:.375rem}.gap-2{gap:.5rem}.gap-3{gap:.75rem}.space-y-1>:not([hidden])~:not([hidden]){--tw-space-y-reverse:0;margin-top:calc(.25rem*(1 - var(--tw-space-y-reverse)));margin-bottom:calc(.25rem*var(--tw-space-y-reverse))}.space-y-3>:not([hidden])~:not([hidden]){--tw-space-y-reverse:0;margin-top:calc(.75rem*(1 - var(--tw-space-y-reverse)));margin-bottom:calc(.75rem*var(--tw-space-y-reverse))}.space-y-6>:not([hidden])~:not([hidden]){--tw-space-y-reverse:0;margin-top:calc(1.5rem*(1 - var(--tw-space-y-reverse)));margin-bottom:calc(1.5rem*var(--tw-space-y-reverse))}.overflow-auto{overflow:auto}.overflow-hidden{overflow:hidden}.overflow-y-auto{overflow-y:auto}.truncate{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.whitespace-pre-wrap{white-space:pre-wrap}.break-all{word-break:break-all}.rounded-lg{border-radius:.5rem}.rounded-xl{border-radius:.75rem}.border{border-width:1px}.border-b{border-bottom-width:1px}.border-r{border-right-width:1px}.border-t{border-top-width:1px}.border-amber-200{--tw-border-opacity:1;border-color:rgb(253 230 138/var(--tw-border-opacity,1))}.border-slate-100{--tw-border-opacity:1;border-color:rgb(241 245 249/var(--tw-border-opacity,1))}.border-slate-200{--tw-border-opacity:1;border-color:rgb(226 232 240/var(--tw-border-opacity,1))}.bg-amber-50{--tw-bg-opacity:1;background-color:rgb(255 251 235/var(--tw-bg-opacity,1))}.bg-slate-50{--tw-bg-opacity:1;background-color:rgb(248 250 252/var(--tw-bg-opacity,1))}.bg-slate-900{--tw-bg-opacity:1;background-color:rgb(15 23 42/var(--tw-bg-opacity,1))}.bg-white{--tw-bg-opacity:1;background-color:rgb(255 255 255/var(--tw-bg-opacity,1))}.p-2{padding:.5rem}.p-3{padding:.75rem}.px-4{padding-left:1rem;padding-right:1rem}.px-5{padding-left:1.25rem;padding-right:1.25rem}.px-6{padding-left:1.5rem;padding-right:1.5rem}.py-2{padding-top:.5rem;padding-bottom:.5rem}.py-2\.5{padding-top:.625rem;padding-bottom:.625rem}.py-3{padding-top:.75rem;padding-bottom:.75rem}.py-8{padding-top:2rem;padding-bottom:2rem}.pb-4{padding-bottom:1rem}.pt-3{padding-top:.75rem}.text-left{text-align:left}.font-mono{font-family:JetBrains Mono,ui-monospace,monospace}.text-\[11px\]{font-size:11px}.text-\[12px\]{font-size:12px}.text-\[13px\]{font-size:13px}.text-\[15px\]{font-size:15px}.font-medium{font-weight:500}.font-normal{font-weight:400}.font-semibold{font-weight:600}.tracking-tight{letter-spacing:-.025em}.text-amber-900{--tw-text-opacity:1;color:rgb(120 53 15/var(--tw-text-opacity,1))}.text-slate-400{--tw-text-opacity:1;color:rgb(148 163 184/var(--tw-text-opacity,1))}.text-slate-500{--tw-text-opacity:1;color:rgb(100 116 139/var(--tw-text-opacity,1))}.text-slate-600{--tw-text-opacity:1;color:rgb(71 85 105/var(--tw-text-opacity,1))}.text-white{--tw-text-opacity:1;color:rgb(255 255 255/var(--tw-text-opacity,1))}.accent-indigo-600{accent-color:#4f46e5}.opacity-0{opacity:0}.shadow{--tw-shadow:0 1px 3px 0 rgba(0,0,0,.1),0 1px 2px -1px rgba(0,0,0,.1);--tw-shadow-colored:0 1px 3px 0 var(--tw-shadow-color),0 1px 2px -1px var(--tw-shadow-color);box-shadow:var(--tw-ring-offset-shadow,0 0 #0000),var(--tw-ring-shadow,0 0 #0000),var(--tw-shadow)}.filter{filter:var(--tw-blur) var(--tw-brightness) var(--tw-contrast) var(--tw-grayscale) var(--tw-hue-rotate) var(--tw-invert) var(--tw-saturate) var(--tw-sepia) var(--tw-drop-shadow)}
+</style>
+</head>
+<body class="h-screen flex flex-col overflow-hidden">
+
+<header class="flex items-center gap-3 px-5 h-14 bg-white border-b border-slate-200 flex-none">
+  <h1 class="font-semibold text-[15px] tracking-tight mr-2">slm-dataset-builder</h1>
+  <label class="flex items-center gap-2 text-[13px] text-slate-600 cursor-pointer select-none">
+    <input id="sysToggle" type="checkbox" class="accent-indigo-600"> System prompt
+  </label>
+  <div class="flex-1"></div>
+  <select id="fmt" class="sel" aria-label="Export format">
+    <option value="openai">OpenAI / HF messages</option>
+    <option value="sharegpt">ShareGPT</option>
+    <option value="alpaca">Alpaca</option>
+    <option value="chatml">Qwen ChatML</option>
+  </select>
+  <select id="ext" class="sel" aria-label="File type"><option value="jsonl">.jsonl</option><option value="json">.json</option></select>
+  <button id="importBtn" class="btn">Import</button>
+  <input id="importFile" type="file" accept=".jsonl,.json,application/json" class="hidden">
+  <button id="dlBtn" class="btn btn-primary">Download</button>
+</header>
+
+<div class="flex flex-1 min-h-0">
+  <aside class="w-[280px] flex-none bg-white border-r border-slate-200 flex flex-col">
+    <div class="p-3 space-y-3 border-b border-slate-100">
+      <div class="flex items-center gap-2">
+        <input id="search" class="inp flex-1 min-w-0" placeholder="Search samples" aria-label="Search samples">
+        <span id="count" class="badge" title="Samples with content">0</span>
+      </div>
+      <button id="newBtn" class="btn w-full">+ New Sample</button>
+    </div>
+    <div id="list" class="flex-1 overflow-y-auto p-2 space-y-1"></div>
+    <div class="p-3 border-t border-slate-100"><button id="resetBtn" class="btn w-full text-slate-500">Reset Demo Data</button></div>
+  </aside>
+
+  <main class="flex-1 min-w-0 flex flex-col">
+    <div id="scroll" class="flex-1 overflow-y-auto">
+      <div id="editor" class="mx-auto w-full max-w-[820px] px-6 py-8 space-y-6"></div>
+    </div>
+    <div class="flex-none bg-white border-t border-slate-200">
+      <div id="preview" class="hidden mx-auto max-w-[820px] px-6 pt-3">
+        <pre id="previewText" class="text-[12px] font-mono bg-slate-50 border border-slate-200 rounded-lg p-3 max-h-40 overflow-auto whitespace-pre-wrap break-all text-slate-600"></pre>
+      </div>
+      <div class="mx-auto max-w-[820px] px-6 py-3 flex items-center gap-2">
+        <button id="saveNext" class="btn btn-primary">Save &amp; Next <kbd>Ctrl ↵</kbd></button>
+        <button id="dupBtn" class="btn">Duplicate Sample</button>
+        <button id="delBtn" class="btn btn-danger">Delete Sample</button>
+        <div class="flex-1"></div>
+        <button id="prevToggle" class="btn">Live JSONL preview</button>
+      </div>
+    </div>
+  </main>
+</div>
+
+<div id="toast" class="fixed bottom-20 right-6 bg-slate-900 text-white text-[13px] rounded-lg px-4 py-2 opacity-0 pointer-events-none"></div>
+
+<script>
+(() => {
+'use strict';
+
+/* ---------- Constants ---------- */
+const KEY = 'slm-dataset-builder:v1';
+const CATS = ['Retail Banking','SME / MSME Credit','KYC & Compliance','Cards & UPI Disputes','General Inquiry'];
+const TOKENS = ['<ACCOUNT_NO>','<PAN>','<AADHAAR>','<AMOUNT>','<IFSC>','<CUSTOMER_NAME>','<MOBILE_NO>','<TXN_ID>'];
+const DEFAULT_SYS = 'You are an accurate, compliant AI banking assistant for a Small and Medium Banking firm. Follow RBI guidelines, never fabricate interest rates or policies, and protect customer PII.';
+// Order matters: most specific patterns first so broad account-number matching doesn't swallow them.
+const PII = [
+  { name: 'Card number', token: '<CARD_NO>',     re: /\b(?:\d{4}[ -]?){3}\d{4}\b/g },
+  { name: 'Aadhaar',     token: '<AADHAAR>',     re: /\b\d{4}[ -]?\d{4}[ -]?\d{4}\b/g },
+  { name: 'Mobile',      token: '<MOBILE_NO>',   re: /(?:\+91[\s-]?)?\b[6-9]\d{9}\b/g },
+  { name: 'PAN',         token: '<PAN>',         re: /\b[A-Z]{5}[0-9]{4}[A-Z]\b/g },
+  { name: 'IFSC',        token: '<IFSC>',        re: /\b[A-Z]{4}0[A-Z0-9]{6}\b/g },
+  { name: 'Account no.', token: '<ACCOUNT_NO>',  re: /\b\d{9,18}\b/g },
+];
+
+/* ---------- State ---------- */
+const uid = () => (crypto.randomUUID ? crypto.randomUUID() : Date.now().toString(36) + Math.random().toString(36).slice(2));
+const blank = (category = CATS[0]) => ({ id: uid(), category, mode: 'single', user: '', input: '', assistant: '', turns: [] });
+
+function seed() {
+  return {
+    systemEnabled: true, systemPrompt: DEFAULT_SYS, format: 'openai', activeId: null,
+    samples: [
+      { id: uid(), category: 'SME / MSME Credit', mode: 'single',
+        user: 'Our firm has a cash credit limit of ₹50 lakh. Stock is ₹40 lakh and book debtors are ₹30 lakh. What is our drawing power this month?',
+        input: 'Policy: Drawing Power = [Stock × (1 − 25% margin)] + [Eligible debtors (< 90 days) × (1 − 40% margin)], capped at the sanctioned limit. Latest stock statement: stock ₹40,00,000; all debtors < 90 days: ₹30,00,000. Current utilisation: ₹44,00,000.',
+        assistant: 'Based on the stock statement and margins in your sanction terms:\n\n• Stock: ₹40,00,000 × 75% = ₹30,00,000\n• Eligible debtors: ₹30,00,000 × 60% = ₹18,00,000\n• Drawing power: ₹48,00,000, which is below your sanctioned limit of ₹50,00,000, so ₹48,00,000 applies.\n\nWith current utilisation of ₹44,00,000, you can draw up to ₹4,00,000 more. Drawing power is revised with each monthly stock and debtor statement, so please submit it on time to avoid the account being flagged irregular.',
+        turns: [] },
+      { id: uid(), category: 'Cards & UPI Disputes', mode: 'multi', user: '', input: '', assistant: '',
+        turns: [
+          { role: 'user', content: 'I just got an SMS that <AMOUNT> was debited from my account <ACCOUNT_NO> via UPI. I did not make this transaction!' },
+          { role: 'assistant', content: 'I am sorry to hear that. To protect your funds, I will block UPI and debit card access on <ACCOUNT_NO> right away. Could you share the transaction ID (<TXN_ID>) from the SMS and tell me when you noticed it?' },
+          { role: 'user', content: 'The ID is <TXN_ID>. I noticed it 10 minutes ago and I have not shared my PIN or OTP with anyone.' },
+          { role: 'assistant', content: 'Thank you. I have hotlisted your card and blocked UPI on <ACCOUNT_NO>, and your dispute for <AMOUNT> is registered. Under RBI rules, a customer who reports an unauthorised electronic transaction within 3 working days has zero liability, and the bank must credit the amount (shadow credit) within 10 working days of your report. Please also file a complaint at cybercrime.gov.in or call 1930. Never share your OTP or PIN with anyone, including bank staff.' },
+        ] },
+      { id: uid(), category: 'Retail Banking', mode: 'single',
+        user: 'I need to break my fixed deposit after 7 months. How much penalty will I pay and what will I receive?',
+        input: 'FD: ₹2,00,000 booked for 12 months at 7.00% p.a. Premature withdrawal after 7 months. Bank policy: interest is paid at the rate applicable for the period the deposit actually ran (5.50% p.a. for 7 months), less a 1% penalty. Interest is computed here as simple interest for illustration.',
+        assistant: 'Under the policy for your deposit:\n\n• Applicable rate for 7 months: 5.50% p.a.\n• Penalty: 1.00%\n• Effective rate: 4.50% p.a.\n\nInterest = ₹2,00,000 × 4.50% × 7/12 = ₹5,250\nApproximate payout = ₹2,05,250\n\nIf you had held the FD to maturity at 7.00%, you would have earned more, so please consider whether a loan or overdraft against the FD suits you better. The final amount may differ slightly depending on how interest is compounded and any TDS applicable.',
+        turns: [] },
+    ],
+  };
+}
+
+let S = load();
+function load() {
+  try { const d = JSON.parse(localStorage.getItem(KEY)); if (d && Array.isArray(d.samples) && d.samples.length) return d; } catch (e) {}
+  return seed();
+}
+const persist = () => { try { localStorage.setItem(KEY, JSON.stringify(S)); } catch (e) { toast('Storage is full or unavailable'); } };
+const cur = () => S.samples.find(s => s.id === S.activeId);
+if (!cur()) S.activeId = S.samples[0].id;
+
+/* ---------- Helpers ---------- */
+const $ = s => document.querySelector(s);
+const esc = t => String(t).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+let toastTimer;
+function toast(m) { const t = $('#toast'); t.textContent = m; t.style.opacity = 1; clearTimeout(toastTimer); toastTimer = setTimeout(() => t.style.opacity = 0, 1800); }
+const fit = el => { el.style.height = 'auto'; el.style.height = Math.max(84, el.scrollHeight + 2) + 'px'; };
+
+function texts(s) { return s.mode === 'multi' ? s.turns.map(t => t.content) : [s.user, s.input, s.assistant]; }
+const isEmpty = s => texts(s).every(t => !t.trim());
+function detect(s) {
+  const found = {};
+  // Mask sequentially (same order as mask()) so one number is only counted once,
+  // e.g. a 16-digit card is not also reported as an account number.
+  texts(s).forEach(t => PII.reduce((r, p) => r.replace(p.re, () => { found[p.name] = (found[p.name] || 0) + 1; return p.token; }), t));
+  return found;
+}
+const mask = t => PII.reduce((acc, p) => acc.replace(p.re, p.token), t);
+
+/* ---------- Conversion (export) ---------- */
+function msgs(s) {
+  if (s.mode === 'multi') return s.turns.filter(t => t.content.trim()).map(t => ({ role: t.role, content: t.content.trim() }));
+  const u = s.user.trim() + (s.input.trim() ? '\n\nContext:\n' + s.input.trim() : '');
+  return [{ role: 'user', content: u }, { role: 'assistant', content: s.assistant.trim() }];
+}
+const sysText = () => (S.systemEnabled && S.systemPrompt.trim()) ? S.systemPrompt.trim() : '';
+function valid(s) {
+  if (s.mode === 'single') return s.user.trim() && s.assistant.trim();
+  const m = msgs(s); return m.some(x => x.role === 'user') && m.some(x => x.role === 'assistant');
+}
+function convert(s, fmt = S.format) {
+  const sys = sysText();
+  const all = (sys ? [{ role: 'system', content: sys }] : []).concat(msgs(s));
+  if (fmt === 'openai') return { messages: all };
+  if (fmt === 'sharegpt') return { conversations: all.map(m => ({ from: m.role === 'user' ? 'human' : m.role === 'assistant' ? 'gpt' : 'system', value: m.content })) };
+  if (fmt === 'chatml') return { text: all.map(m => `<|im_start|>${m.role}\n${m.content}<|im_end|>\n`).join('') };
+  // alpaca
+  if (s.mode === 'single') return { instruction: s.user.trim(), input: s.input.trim(), output: s.assistant.trim(), system: sys };
+  const m = msgs(s); let last = -1;
+  m.forEach((x, i) => { if (x.role === 'assistant') last = i; });
+  let ui = -1; for (let i = last - 1; i >= 0; i--) if (m[i].role === 'user') { ui = i; break; }
+  const hist = []; let pu = null;
+  m.slice(0, Math.max(ui, 0)).forEach(x => { if (x.role === 'user') pu = x.content; else if (pu !== null) { hist.push([pu, x.content]); pu = null; } });
+  const out = { instruction: ui >= 0 ? m[ui].content : '', input: '', output: last >= 0 ? m[last].content : '', system: sys };
+  if (hist.length) out.history = hist;
+  return out;
+}
+
+/* ---------- Import ---------- */
+function rowToSample(row) {
+  let m = null, input = '';
+  if (Array.isArray(row.messages)) m = row.messages.map(x => ({ role: x.role, content: String(x.content ?? '') }));
+  else if (Array.isArray(row.conversations)) m = row.conversations.map(x => ({ role: x.from === 'human' ? 'user' : x.from === 'gpt' ? 'assistant' : x.from, content: String(x.value ?? '') }));
+  else if (typeof row.text === 'string') { m = []; row.text.replace(/<\|im_start\|>(\w+)\n([\s\S]*?)<\|im_end\|>/g, (_, r, c) => { m.push({ role: r, content: c }); return ''; }); }
+  else if (row.instruction !== undefined) {
+    m = [];
+    if (row.system) m.push({ role: 'system', content: row.system });
+    (row.history || []).forEach(h => { m.push({ role: 'user', content: h[0] }, { role: 'assistant', content: h[1] }); });
+    m.push({ role: 'user', content: row.instruction }, { role: 'assistant', content: row.output || '' });
+    if (!row.history && row.input) input = row.input;
+  }
+  if (!m || !m.length) return null;
+  const sys = m.find(x => x.role === 'system');
+  const rest = m.filter(x => x.role === 'user' || x.role === 'assistant');
+  const s = blank('General Inquiry');
+  if (rest.length === 2 && rest[0].role === 'user' && rest[1].role === 'assistant') { s.user = rest[0].content; s.assistant = rest[1].content; s.input = input; }
+  else { s.mode = 'multi'; s.turns = rest; }
+  return { sample: s, system: sys ? sys.content : '' };
+}
+function importText(text) {
+  text = text.trim(); let rows = [];
+  try {
+    if (text.startsWith('[')) rows = JSON.parse(text);
+    else rows = text.split(/\r?\n/).filter(l => l.trim()).map(l => JSON.parse(l));
+  } catch (e) { toast('Import failed: invalid JSON'); return; }
+  const added = []; let sys = '';
+  rows.forEach(r => { const x = r && rowToSample(r); if (x) { added.push(x.sample); if (!sys && x.system) sys = x.system; } });
+  if (!added.length) { toast('No recognisable samples found'); return; }
+  if (S.samples.length === 1 && isEmpty(S.samples[0])) S.samples = [];
+  S.samples.push(...added);
+  if (sys) { S.systemPrompt = sys; S.systemEnabled = true; }
+  S.activeId = added[0].id; persist(); renderAll(); toast(`Imported ${added.length} sample${added.length > 1 ? 's' : ''}`);
+}
+
+/* ---------- Rendering ---------- */
+let lastField = null;
+
+function renderAll() {
+  $('#sysToggle').checked = S.systemEnabled;
+  $('#fmt').value = S.format;
+  renderList(); renderEditor(); renderPreview();
+}
+
+function renderList() {
+  const q = $('#search').value.trim().toLowerCase();
+  $('#count').textContent = S.samples.filter(s => !isEmpty(s)).length;
+  const el = $('#list'); el.innerHTML = '';
+  S.samples.forEach((s, i) => {
+    const prev = (s.mode === 'multi' ? (s.turns[0] || {}).content : s.user) || '';
+    if (q && !(texts(s).join(' ') + s.category).toLowerCase().includes(q)) return;
+    const b = document.createElement('button');
+    b.className = 'item' + (s.id === S.activeId ? ' on' : ''); b.dataset.id = s.id;
+    b.innerHTML = `<div class="flex items-center gap-2 mb-1"><span class="text-[12px] text-slate-400 font-mono">#${i + 1}</span><span class="badge truncate">${esc(s.category)}</span><span class="flex-1"></span>${s.mode === 'multi' ? '<span class="text-[11px] text-slate-400">multi</span>' : ''}${Object.keys(detect(s)).length ? '<span class="dot" title="Unmasked PII detected"></span>' : ''}</div><div class="text-[13px] text-slate-600 truncate">${esc(prev.replace(/\s+/g, ' ')) || '<span class="text-slate-400">Empty sample</span>'}</div>`;
+    b.onclick = () => select(s.id);
+    el.appendChild(b);
+  });
+  if (!el.children.length) el.innerHTML = '<p class="text-[13px] text-slate-400 p-3">No samples match.</p>';
+}
+
+const FIELD = 'field';
+function field(label, key, ph, extra = '') {
+  return `<div><label class="lbl">${label}</label><textarea class="${FIELD}" data-key="${key}" placeholder="${ph}" ${extra}></textarea></div>`;
+}
+
+function renderEditor() {
+  const s = cur(), ed = $('#editor'), idx = S.samples.indexOf(s) + 1;
+  let body;
+  if (s.mode === 'single') {
+    body = `
+      <div>${field('Customer query <span class="text-slate-400 font-normal">(user)</span>', 'user', 'How do I…?')}</div>
+      <details id="ctxBox" ${s.input ? 'open' : ''}>
+        <summary class="text-[13px] font-medium text-slate-500 cursor-pointer mb-2 select-none">Context / reference policy <span class="font-normal text-slate-400">(optional input)</span></summary>
+        <textarea class="${FIELD}" data-key="input" placeholder="Policy snippet, account state, or retrieved passage"></textarea>
+      </details>
+      ${field('Ideal assistant response <span class="text-slate-400 font-normal">(assistant)</span>', 'assistant', 'The response you want the model to learn')}`;
+  } else {
+    body = `<div id="turns" class="space-y-3">${s.turns.map((t, i) => `
+      <div class="bg-white border border-slate-200 rounded-xl p-3" data-turn="${i}">
+        <div class="flex items-center gap-1 mb-2">
+          <button class="turn-role ${t.role}" data-act="role" title="Toggle role">${t.role}</button><span class="flex-1"></span>
+          <button class="ic" data-act="up" title="Move up" ${i === 0 ? 'disabled' : ''}>↑</button>
+          <button class="ic" data-act="down" title="Move down" ${i === s.turns.length - 1 ? 'disabled' : ''}>↓</button>
+          <button class="ic" data-act="del" title="Delete turn">✕</button>
+        </div>
+        <textarea class="${FIELD}" data-turnfield="${i}" placeholder="${t.role === 'user' ? 'Customer message' : 'Assistant reply'}" style="min-height:56px"></textarea>
+      </div>`).join('')}</div>
+      <button id="addTurn" class="btn">+ Add Turn</button>`;
+  }
+  ed.innerHTML = `
+    <div id="sysBar" class="bg-white border border-slate-200 rounded-xl">
+      <button id="sysHead" class="w-full flex items-center gap-2 px-4 py-2.5 text-[13px] text-slate-600 text-left">
+        <span class="font-medium">System prompt</span>
+        <span class="text-slate-400">${S.systemEnabled ? 'included in export' : 'excluded from export'}</span>
+        <span class="flex-1"></span><span id="sysChev" class="text-slate-400">${window.__sysOpen ? '▴' : '▾'}</span>
+      </button>
+      <div id="sysBody" class="px-4 pb-4 ${window.__sysOpen ? '' : 'hidden'}"><textarea id="sysText" class="${FIELD}" style="min-height:70px"></textarea></div>
+    </div>
+    <div class="flex flex-wrap items-center gap-3">
+      <span class="text-[13px] text-slate-400 font-mono">#${idx}</span>
+      <div class="seg" role="tablist"><button data-mode="single" class="${s.mode === 'single' ? 'on' : ''}">Single Q&amp;A</button><button data-mode="multi" class="${s.mode === 'multi' ? 'on' : ''}">Multi-turn</button></div>
+    </div>
+    <div class="flex flex-wrap gap-2" id="cats">${CATS.map(c => `<button class="cat ${c === s.category ? 'on' : ''}" data-cat="${esc(c)}">${esc(c)}</button>`).join('')}</div>
+    <div>
+      <span class="lbl">Insert mask token at cursor</span>
+      <div class="flex flex-wrap gap-1.5" id="pills">${TOKENS.map(t => `<button class="pill" type="button">${esc(t)}</button>`).join('')}</div>
+    </div>
+    <div id="piiBanner"></div>
+    ${body}`;
+  bindEditor();
+  ed.querySelectorAll('textarea').forEach(fit);
+  renderBanner();
+}
+
+function bindEditor() {
+  const s = cur(), ed = $('#editor');
+  // text fields
+  ed.querySelectorAll('textarea').forEach(t => {
+    if (t.id === 'sysText') t.value = S.systemPrompt;
+    else if (t.dataset.key) t.value = s[t.dataset.key];
+    else if (t.dataset.turnfield !== undefined) t.value = s.turns[+t.dataset.turnfield].content;
+    t.addEventListener('focus', () => lastField = t);
+    t.addEventListener('input', () => {
+      if (t.id === 'sysText') S.systemPrompt = t.value;
+      else if (t.dataset.key) s[t.dataset.key] = t.value;
+      else s.turns[+t.dataset.turnfield].content = t.value;
+      fit(t); persist(); renderList(); renderBanner(); renderPreview();
+    });
+  });
+  $('#sysHead').onclick = () => { window.__sysOpen = !window.__sysOpen; $('#sysBody').classList.toggle('hidden', !window.__sysOpen); $('#sysChev').textContent = window.__sysOpen ? '▴' : '▾'; if (window.__sysOpen) fit($('#sysText')); };
+  ed.querySelectorAll('[data-mode]').forEach(b => b.onclick = () => {
+    const m = b.dataset.mode; if (m === s.mode) return;
+    if (m === 'multi' && !s.turns.length) s.turns = [{ role: 'user', content: s.user }, { role: 'assistant', content: s.assistant }];
+    s.mode = m; persist(); renderAll();
+  });
+  ed.querySelectorAll('[data-cat]').forEach(b => b.onclick = () => { s.category = b.dataset.cat; persist(); renderList(); renderEditor(); });
+  ed.querySelectorAll('#pills .pill').forEach(p => {
+    p.addEventListener('mousedown', e => e.preventDefault()); // keep textarea focus + caret
+    p.onclick = () => insertToken(p.textContent);
+  });
+  if ($('#addTurn')) $('#addTurn').onclick = () => {
+    const last = s.turns[s.turns.length - 1];
+    s.turns.push({ role: last && last.role === 'user' ? 'assistant' : 'user', content: '' });
+    persist(); renderEditor(); renderPreview();
+    const tas = ed.querySelectorAll('[data-turnfield]'); tas[tas.length - 1].focus();
+  };
+  ed.querySelectorAll('[data-turn] [data-act]').forEach(b => b.onclick = () => {
+    const i = +b.closest('[data-turn]').dataset.turn, a = b.dataset.act, T = s.turns;
+    if (a === 'role') T[i].role = T[i].role === 'user' ? 'assistant' : 'user';
+    if (a === 'del') T.splice(i, 1);
+    if (a === 'up' && i > 0) [T[i - 1], T[i]] = [T[i], T[i - 1]];
+    if (a === 'down' && i < T.length - 1) [T[i + 1], T[i]] = [T[i], T[i + 1]];
+    persist(); renderEditor(); renderList(); renderPreview();
+  });
+}
+
+function insertToken(tok) {
+  const t = lastField && document.body.contains(lastField) ? lastField : $('#editor textarea[data-key],#editor textarea[data-turnfield]');
+  if (!t) return;
+  const a = t.selectionStart ?? t.value.length, b = t.selectionEnd ?? a;
+  t.focus(); t.setRangeText(tok, a, b, 'end');
+  t.dispatchEvent(new Event('input', { bubbles: true }));
+}
+
+function renderBanner() {
+  const f = detect(cur()), box = $('#piiBanner'), keys = Object.keys(f);
+  if (!keys.length) { box.innerHTML = ''; return; }
+  box.innerHTML = `<div class="flex items-center gap-3 bg-amber-50 border border-amber-200 text-amber-900 rounded-lg px-4 py-2.5 text-[13px]">
+    <span class="flex-1">Possible unmasked PII: ${keys.map(k => `${esc(k)} (${f[k]})`).join(', ')}.</span>
+    <button id="maskBtn" class="btn" style="border-color:#FCD34D">Auto-Mask PII</button></div>`;
+  $('#maskBtn').onclick = () => {
+    const s = cur();
+    if (s.mode === 'multi') s.turns.forEach(t => t.content = mask(t.content));
+    else { s.user = mask(s.user); s.input = mask(s.input); s.assistant = mask(s.assistant); }
+    persist(); renderEditor(); renderList(); renderPreview(); toast('PII masked');
+  };
+}
+
+function renderPreview() {
+  if ($('#preview').classList.contains('hidden')) return;
+  const s = cur();
+  $('#previewText').textContent = isEmpty(s) ? '(empty sample)' : JSON.stringify(convert(s));
+}
+
+/* ---------- Actions ---------- */
+function select(id) { S.activeId = id; persist(); renderAll(); }
+function newSample(focus = true) {
+  const s = blank(cur() ? cur().category : CATS[0]);
+  S.samples.push(s); S.activeId = s.id; persist(); renderAll();
+  if (focus) { const t = $('#editor textarea[data-key],#editor textarea[data-turnfield]'); t && t.focus(); }
+}
+function saveNext() {
+  const s = cur();
+  if (isEmpty(s)) { const t = $('#editor textarea[data-key],#editor textarea[data-turnfield]'); t && t.focus(); return; }
+  persist(); toast(`Saved #${S.samples.indexOf(s) + 1}`); newSample();
+}
+function download() {
+  const ok = S.samples.filter(s => !isEmpty(s) && valid(s)), skipped = S.samples.filter(s => !isEmpty(s)).length - ok.length;
+  if (!ok.length) { toast('Nothing to export: each sample needs a user and assistant message'); return; }
+  const ext = $('#ext').value, rows = ok.map(s => convert(s));
+  const data = ext === 'jsonl' ? rows.map(r => JSON.stringify(r)).join('\n') + '\n' : JSON.stringify(rows, null, 2);
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([data], { type: 'application/json' }));
+  a.download = `slm-dataset-${S.format}.${ext}`; a.click(); URL.revokeObjectURL(a.href);
+  toast(`Exported ${ok.length} sample${ok.length > 1 ? 's' : ''}${skipped ? `, skipped ${skipped} incomplete` : ''}`);
+}
+
+/* ---------- Wiring ---------- */
+$('#sysToggle').onchange = e => { S.systemEnabled = e.target.checked; persist(); renderEditor(); renderPreview(); };
+$('#fmt').onchange = e => { S.format = e.target.value; persist(); renderPreview(); };
+$('#search').oninput = renderList;
+$('#newBtn').onclick = () => newSample();
+$('#saveNext').onclick = saveNext;
+$('#dupBtn').onclick = () => {
+  const s = cur(), c = JSON.parse(JSON.stringify(s)); c.id = uid();
+  S.samples.splice(S.samples.indexOf(s) + 1, 0, c); S.activeId = c.id; persist(); renderAll(); toast('Duplicated');
+};
+// Two-click confirmation: native confirm() is blocked in sandboxed iframes (e.g. previews).
+function armed(btn, label, action) {
+  if (btn.dataset.armed) { clearTimeout(btn._t); btn.textContent = btn.dataset.label; delete btn.dataset.armed; action(); return; }
+  btn.dataset.label = btn.textContent; btn.dataset.armed = '1'; btn.textContent = label;
+  btn._t = setTimeout(() => { btn.textContent = btn.dataset.label; delete btn.dataset.armed; }, 3000);
+}
+function deleteCurrent() {
+  const i = S.samples.indexOf(cur()); S.samples.splice(i, 1);
+  if (!S.samples.length) S.samples.push(blank());
+  S.activeId = S.samples[Math.min(i, S.samples.length - 1)].id; persist(); renderAll(); toast('Deleted');
+}
+$('#delBtn').onclick = e => isEmpty(cur()) ? deleteCurrent() : armed(e.currentTarget, 'Click again to delete', deleteCurrent);
+$('#prevToggle').onclick = () => { $('#preview').classList.toggle('hidden'); renderPreview(); };
+$('#resetBtn').onclick = e => armed(e.currentTarget, 'Click again to reset all', () => { S = seed(); S.activeId = S.samples[0].id; persist(); renderAll(); toast('Demo data restored'); });
+$('#dlBtn').onclick = download;
+$('#importBtn').onclick = () => $('#importFile').click();
+$('#importFile').onchange = async e => { const f = e.target.files[0]; if (f) importText(await f.text()); e.target.value = ''; };
+document.addEventListener('keydown', e => {
+  if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') { e.preventDefault(); saveNext(); }
+  else if (e.altKey && (e.key === 'ArrowUp' || e.key === 'ArrowDown')) {
+    e.preventDefault();
+    const i = S.samples.indexOf(cur()) + (e.key === 'ArrowDown' ? 1 : -1);
+    if (S.samples[i]) { select(S.samples[i].id); const a = $('#list .item.on'); a && a.scrollIntoView({ block: 'nearest' }); }
+  }
+});
+
+renderAll();
+})();
+</script>
+</body>
+</html>

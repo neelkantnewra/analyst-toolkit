@@ -10,6 +10,7 @@ Small browser-based tools for data analysts — no backend, no installs, runs en
 | [quantile-bucket-builder](./quantile-bucket-builder) | Turns a numeric variable — raw values or a `value, count` table from a `GROUP BY` — into population-balanced buckets, with sentinel/outlier handling and a generated SQL `CASE WHEN` to reproduce them. |
 | [overlap-grid-checker](./overlap-grid-checker) | Takes a multi-variable count table and flags which combinations have little or no data, via a full cross-product combination list plus a 2D heatmap slice for any pair of variables. |
 | [rule-waterfall-builder](./rule-waterfall-builder) | Traces records through the sequential stages of an approval journey and shows which rule caused the drop at each stage, as a waterfall chart plus a rule-by-stage table. Accepts a Google Sheets pivot export or one row per record, with options for crediting overlapping rules. |
+| [slm-dataset-builder](./slm-dataset-builder) | A keyboard-first editor for hand-curating supervised fine-tuning datasets for small language models like Qwen, built around a banking use case. Masks PII (PAN, Aadhaar, account numbers and more) as you type, supports single Q&A and multi-turn samples, and exports to OpenAI/Hugging Face messages, ShareGPT, Alpaca, or Qwen ChatML as `.jsonl` or `.json`, with import for all four. |
 
 More tools will be added here over time — each lives in its own folder with a short README.
 
